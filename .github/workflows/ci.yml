@@ -1,0 +1,95 @@
+name: CI Validation & Deployment
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint, Typecheck & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full git history and tags required for versioning
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Typecheck
+        run: npm run typecheck
+
+      - name: Run Dead Code & Dependency Check (Knip)
+        run: npm run knip
+
+      - name: Run Unit Tests
+        run: npm run test:unit
+
+      - name: Build Production Bundle
+        run: npm run build
+
+      - name: Upload Production Dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Cloudflare Edge
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Production Dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # Publishes dist/ as a static-assets Worker on idlemullet.com/idle-smoke (see wrangler.jsonc).
+      # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID come from Doppler via DOPPLER_TOKEN.
+      - name: Deploy to Cloudflare Workers
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run -- npx --yes wrangler deploy
+
+      # Tags the version worked out from conventional commits and publishes GitHub release notes
+      - name: Tag Release & Publish Notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v$(node scripts/version.mjs --notes notes.md)"
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "$VERSION already released; deployed commit ${GITHUB_SHA::7}."
+            exit 0
+          fi
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --notes-file notes.md

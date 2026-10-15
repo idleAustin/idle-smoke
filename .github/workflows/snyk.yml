@@ -1,0 +1,76 @@
+name: Snyk & Secret Security Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 1' # Weekly security scan every Monday at midnight UTC
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Snyk Vulnerability & Container Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history required for Gitleaks commit scanning
+
+      # 1. Scan full git history & PR commits for leaked secrets
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # All secrets flow through Doppler — no need to manage separate SNYK_TOKEN in GitHub
+      - name: Fetch Secrets from Doppler
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler secrets download --no-file --format env >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # 2. Enforce High/Critical CVE check on open-source dependencies
+      - name: Snyk Open Source Dependency Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ env.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      # 3. Enforce High/Critical SAST check on first-party source code
+      - name: Snyk Code SAST Scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ env.SNYK_TOKEN }}
+        with:
+          command: code test
+          args: --severity-threshold=high
+
+      # 4. Multi-stage Docker build & container OS layer scan
+      - name: Build Docker Image
+        run: docker build -t idle-smoke .
+
+      - name: Snyk Container Image Scan
+        uses: snyk/actions/docker@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ env.SNYK_TOKEN }}
+        with:
+          image: idle-smoke
+          args: --severity-threshold=high

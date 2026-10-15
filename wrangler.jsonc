@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "idle-smoke",
+  "main": "server/worker.js",
+  "compatibility_date": "2024-09-23",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "routes": [
+    {
+      "pattern": "idlemullet.com/idle-smoke*",
+      "zone_name": "idlemullet.com"
+    },
+    {
+      "pattern": "www.idlemullet.com/idle-smoke*",
+      "zone_name": "idlemullet.com"
+    }
+  ]
+}
+
