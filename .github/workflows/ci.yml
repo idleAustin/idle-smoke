@@ -47,6 +47,37 @@ jobs:
           path: dist/
           retention-days: 1
 
+  deploy-staging:
+    name: Deploy to Cloudflare Staging
+    needs: validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Production Dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # Deploys PR build to the staging Cloudflare Worker (--env staging in wrangler.jsonc)
+      # using the Doppler 'stg' environment token. Does NOT cut a version tag.
+      - name: Deploy to Cloudflare Workers (Staging)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_STG || secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run -- npx --yes wrangler deploy --env staging
+
   deploy:
     name: Deploy to Cloudflare Edge
     needs: validate
