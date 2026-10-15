@@ -21,6 +21,7 @@
     "staging": {
       "name": "idle-smoke-staging",
       "workers_dev": true,
+      "routes": [],
       "assets": {
         "directory": "./dist",
         "binding": "ASSETS"
