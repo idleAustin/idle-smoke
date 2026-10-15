@@ -11,6 +11,9 @@
     "start": "node server/index.js",
     "preview": "vite preview --host 127.0.0.1",
     "version:next": "node scripts/version.mjs",
+    "db:inspect": "node --no-warnings scripts/db-inspect.mjs",
+    "db:d1:init": "node --no-warnings scripts/db-inspect.mjs --d1-init",
+    "db:live": "node --no-warnings scripts/db-inspect.mjs --d1-remote",
     "test:unit": "vitest run src",
     "test:browser": "playwright test",
     "test": "npm run test:unit && npm run test:browser"
