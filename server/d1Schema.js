@@ -65,7 +65,29 @@ export function createD1Store(d1) {
      * @param {string} tokenHash
      */
     async getPlayerByTokenHash(tokenHash) {
-      return (await d1.prepare(API_SQL.selectPlayerByTokenHash).bind(tokenHash).first()) ?? null;
+      return (await d1.prepare(API_SQL.selectPlayerByTokenHash).bind(tokenHash, tokenHash).first()) ?? null;
+    },
+    /**
+     * @param {string} playerId
+     */
+    async getPlayerById(playerId) {
+      return (await d1.prepare(API_SQL.selectPlayerById).bind(playerId).first()) ?? null;
+    },
+    /**
+     * @param {string} provider
+     * @param {string} providerSub
+     */
+    async getAuthIdentity(provider, providerSub) {
+      return (await d1.prepare(API_SQL.selectAuthIdentity).bind(provider, providerSub).first()) ?? null;
+    },
+    /**
+     * @param {{ provider: string, providerSub: string, playerId: string, secretHash?: string | null, email?: string | null, nowUnix: number }} params
+     */
+    async upsertAuthIdentity({ provider, providerSub, playerId, secretHash = null, email = null, nowUnix }) {
+      await d1
+        .prepare(API_SQL.upsertAuthIdentity)
+        .bind(provider, providerSub, playerId, secretHash, email, nowUnix, nowUnix)
+        .run();
     },
     /**
      * @param {string} playerId

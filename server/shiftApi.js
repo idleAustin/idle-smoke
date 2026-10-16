@@ -5,11 +5,15 @@ import {
   extractBearerToken,
   generatePlayerCredentials,
   hasTamperedScoreFields,
+  hashPassword,
   hashPlayerToken,
   isValidEnvironmentId,
   normalizePlatform,
   normalizeStartedAtUnix,
   validateCallsign,
+  validatePassword,
+  verifyOAuthIdToken,
+  verifyPassword,
   verifyShiftReplay,
 } from './shiftVerifier.js';
 
@@ -100,7 +104,7 @@ async function authenticateAndValidateShiftContext(authHeader, body, store) {
  * Shared server-authoritative API handler used by both Express (server/index.js) and Cloudflare Workers (server/worker.js).
  * @param {{ method: string, pathname: string, authHeader?: string | null, rawBody?: string, contentLength?: number | string | null, clientIp?: string | null }} req
  * @param {ReturnType<typeof import('./sqliteDb.js').createSqliteStore>} store
- * @param {{ nowUnix?: number }} [options]
+ * @param {{ nowUnix?: number, jwksFetch?: typeof fetch }} [options]
  * @returns {Promise<{ status: number, body: Record<string, unknown> }>}
  */
 export async function handleApiRequest(req, store, options = {}) {
@@ -209,6 +213,12 @@ export async function handleApiRequest(req, store, options = {}) {
       return { status: 400, body: { error: callsignResult.error } };
     }
 
+    const normalizedCallsign = callsignResult.callsign.toUpperCase();
+    const existingIdentity = await store.getAuthIdentity('password', normalizedCallsign);
+    if (existingIdentity && String(existingIdentity.player_id) !== String(playerRow.id)) {
+      return { status: 409, body: { error: 'Callsign is already registered by another player' } };
+    }
+
     const updatedRow = await store.updatePlayerCallsign(
       String(playerRow.id),
       callsignResult.callsign,
@@ -218,6 +228,203 @@ export async function handleApiRequest(req, store, options = {}) {
       return { status: 404, body: { error: 'Player not found' } };
     }
     return { status: 200, body: formatPlayerProfile(updatedRow) };
+  }
+
+  if (route === '/api/v1/auth/login' && method === 'POST') {
+    const callsignResult = validateCallsign(body.callsign);
+    if (!callsignResult.ok) {
+      return { status: 400, body: { error: callsignResult.error } };
+    }
+    const passwordResult = validatePassword(body.password);
+    if (!passwordResult.ok) {
+      return { status: 400, body: { error: passwordResult.error } };
+    }
+    const platformResult = normalizePlatform(body.platform);
+    if (!platformResult.ok) {
+      return { status: 400, body: { error: platformResult.error } };
+    }
+
+    const normalizedCallsign = callsignResult.callsign.toUpperCase();
+    const existingIdentity = await store.getAuthIdentity('password', normalizedCallsign);
+
+    if (existingIdentity) {
+      const validPassword = await verifyPassword(
+        passwordResult.password,
+        String(existingIdentity.secret_hash ?? '')
+      );
+      if (!validPassword) {
+        return { status: 401, body: { error: 'Invalid callsign or password' } };
+      }
+
+      const targetPlayer = await store.getPlayerById(String(existingIdentity.player_id));
+      if (!targetPlayer) {
+        return { status: 404, body: { error: 'Player account not found' } };
+      }
+
+      const callerPlayer = await authenticatePlayer(req.authHeader, store);
+      if (callerPlayer && String(callerPlayer.id) === String(targetPlayer.id)) {
+        return { status: 200, body: formatPlayerProfile(targetPlayer) };
+      }
+
+      const sessionCreds = generatePlayerCredentials();
+      const sessionTokenHash = await hashPlayerToken(sessionCreds.playerToken);
+      await store.upsertAuthIdentity({
+        provider: 'session',
+        providerSub: sessionTokenHash,
+        playerId: String(targetPlayer.id),
+        nowUnix,
+      });
+
+      return {
+        status: 200,
+        body: {
+          ...formatPlayerProfile(targetPlayer),
+          playerToken: sessionCreds.playerToken,
+        },
+      };
+    }
+
+    let playerRow = await authenticatePlayer(req.authHeader, store);
+    let issuedToken = null;
+
+    if (!playerRow) {
+      const creds = generatePlayerCredentials();
+      const tokenHash = await hashPlayerToken(creds.playerToken);
+      playerRow = await store.createPlayer({
+        id: creds.playerId,
+        callsign: normalizedCallsign,
+        tokenHash,
+        platform: platformResult.platform,
+        nowUnix,
+      });
+      issuedToken = creds.playerToken;
+    } else if (String(playerRow.callsign) !== normalizedCallsign) {
+      playerRow = await store.updatePlayerCallsign(
+        String(playerRow.id),
+        normalizedCallsign,
+        nowUnix
+      );
+    }
+
+    if (!playerRow) {
+      return { status: 500, body: { error: 'Failed to initialize player account' } };
+    }
+
+    const secretHash = await hashPassword(passwordResult.password);
+    await store.upsertAuthIdentity({
+      provider: 'password',
+      providerSub: normalizedCallsign,
+      playerId: String(playerRow.id),
+      secretHash,
+      nowUnix,
+    });
+
+    return {
+      status: 200,
+      body: {
+        ...formatPlayerProfile(playerRow),
+        ...(issuedToken ? { playerToken: issuedToken } : {}),
+      },
+    };
+  }
+
+  if (route === '/api/v1/auth/oauth' && method === 'POST') {
+    const platformResult = normalizePlatform(body.platform);
+    if (!platformResult.ok) {
+      return { status: 400, body: { error: platformResult.error } };
+    }
+
+    const oauthResult = await verifyOAuthIdToken(body.provider, body.idToken, {
+      nowUnix,
+      jwksFetch: options.jwksFetch,
+    });
+    if (!oauthResult.ok) {
+      return { status: oauthResult.status, body: { error: oauthResult.error } };
+    }
+
+    const existingIdentity = await store.getAuthIdentity(oauthResult.provider, oauthResult.sub);
+    if (existingIdentity) {
+      const targetPlayer = await store.getPlayerById(String(existingIdentity.player_id));
+      if (!targetPlayer) {
+        return { status: 404, body: { error: 'Linked player account not found' } };
+      }
+
+      const callerPlayer = await authenticatePlayer(req.authHeader, store);
+      if (callerPlayer && String(callerPlayer.id) === String(targetPlayer.id)) {
+        return { status: 200, body: formatPlayerProfile(targetPlayer) };
+      }
+
+      const sessionCreds = generatePlayerCredentials();
+      const sessionTokenHash = await hashPlayerToken(sessionCreds.playerToken);
+      await store.upsertAuthIdentity({
+        provider: 'session',
+        providerSub: sessionTokenHash,
+        playerId: String(targetPlayer.id),
+        email: oauthResult.email,
+        nowUnix,
+      });
+
+      return {
+        status: 200,
+        body: {
+          ...formatPlayerProfile(targetPlayer),
+          playerToken: sessionCreds.playerToken,
+        },
+      };
+    }
+
+    let playerRow = await authenticatePlayer(req.authHeader, store);
+    let issuedToken = null;
+    let desiredCallsign = null;
+    if (body.callsign !== undefined) {
+      const cs = validateCallsign(body.callsign);
+      if (cs.ok) desiredCallsign = cs.callsign.toUpperCase();
+    } else if (oauthResult.suggestedCallsign) {
+      desiredCallsign = oauthResult.suggestedCallsign;
+    }
+
+    if (!playerRow) {
+      const creds = generatePlayerCredentials();
+      const tokenHash = await hashPlayerToken(creds.playerToken);
+      playerRow = await store.createPlayer({
+        id: creds.playerId,
+        callsign: desiredCallsign ?? creds.callsign,
+        tokenHash,
+        platform: platformResult.platform,
+        nowUnix,
+      });
+      issuedToken = creds.playerToken;
+    } else if (
+      desiredCallsign &&
+      String(playerRow.callsign).startsWith('SHIFT-') &&
+      String(playerRow.callsign) !== desiredCallsign
+    ) {
+      playerRow = await store.updatePlayerCallsign(
+        String(playerRow.id),
+        desiredCallsign,
+        nowUnix
+      );
+    }
+
+    if (!playerRow) {
+      return { status: 500, body: { error: 'Failed to initialize OAuth player account' } };
+    }
+
+    await store.upsertAuthIdentity({
+      provider: oauthResult.provider,
+      providerSub: oauthResult.sub,
+      playerId: String(playerRow.id),
+      email: oauthResult.email,
+      nowUnix,
+    });
+
+    return {
+      status: 200,
+      body: {
+        ...formatPlayerProfile(playerRow),
+        ...(issuedToken ? { playerToken: issuedToken } : {}),
+      },
+    };
   }
 
   if (route === '/api/v1/shifts/start' && method === 'POST') {

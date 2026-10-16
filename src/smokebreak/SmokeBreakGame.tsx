@@ -6,6 +6,8 @@ import {
   flushPendingShifts,
   getCachedLeaderboard,
   getCachedPlayerProfile,
+  loginWithOAuth,
+  loginWithPassword,
   resolveShiftEnvironment,
   startShiftSession,
   submitFinishedShift,
@@ -328,6 +330,14 @@ export function SmokeBreakGame({
           onSelectEnvironment={setEnvId}
           onSaveCallsign={async nextCallsign => {
             const updated = await updatePlayerCallsign(nextCallsign);
+            setProfile(updated);
+          }}
+          onLoginPassword={async (callsign, password) => {
+            const updated = await loginWithPassword(callsign, password);
+            setProfile(updated);
+          }}
+          onLoginOAuth={async (provider, idToken, callsign) => {
+            const updated = await loginWithOAuth({ provider, idToken, callsign });
             setProfile(updated);
           }}
           onCompleteLogin={() => setLobbyStep('modes')}

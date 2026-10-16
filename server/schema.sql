@@ -53,6 +53,20 @@ CREATE INDEX IF NOT EXISTS idx_shift_fact_player
 CREATE INDEX IF NOT EXISTS idx_player_dim_best
     ON player_dim (best_smoked DESC, lifetime_smoked DESC, callsign, id);
 
+CREATE TABLE IF NOT EXISTS player_auth (
+    provider     TEXT    NOT NULL CHECK (provider IN ('password', 'google', 'apple', 'session')),
+    provider_sub TEXT    NOT NULL,
+    player_id    TEXT    NOT NULL REFERENCES player_dim(id) ON DELETE CASCADE,
+    secret_hash  TEXT,
+    email        TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (provider, provider_sub)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_player_auth_player
+    ON player_auth (player_id, provider);
+
 INSERT INTO environment_dim (id, name, sector, unlock_smoked_required) VALUES
     ('alleyway', 'Alleyway', 'SECTOR 01 · EAST BRICK ALLEY', 0),
     ('restaurant', 'Behind a Restaurant', 'SECTOR 02 · KITCHEN SERVICE EXIT', 5),

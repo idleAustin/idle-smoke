@@ -115,7 +115,34 @@ export function createSqliteStore(db) {
      * @param {string} tokenHash
      */
     async getPlayerByTokenHash(tokenHash) {
-      return db.prepare(API_SQL.selectPlayerByTokenHash).get(tokenHash) ?? null;
+      return db.prepare(API_SQL.selectPlayerByTokenHash).get(tokenHash, tokenHash) ?? null;
+    },
+    /**
+     * @param {string} playerId
+     */
+    async getPlayerById(playerId) {
+      return db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null;
+    },
+    /**
+     * @param {string} provider
+     * @param {string} providerSub
+     */
+    async getAuthIdentity(provider, providerSub) {
+      return db.prepare(API_SQL.selectAuthIdentity).get(provider, providerSub) ?? null;
+    },
+    /**
+     * @param {{ provider: string, providerSub: string, playerId: string, secretHash?: string | null, email?: string | null, nowUnix: number }} params
+     */
+    async upsertAuthIdentity({ provider, providerSub, playerId, secretHash = null, email = null, nowUnix }) {
+      db.prepare(API_SQL.upsertAuthIdentity).run(
+        provider,
+        providerSub,
+        playerId,
+        secretHash,
+        email,
+        nowUnix,
+        nowUnix
+      );
     },
     /**
      * @param {string} playerId

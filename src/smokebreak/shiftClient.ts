@@ -607,6 +607,82 @@ export async function updatePlayerCallsign(
   return updated;
 }
 
+export async function loginWithPassword(
+  callsign: string,
+  password: string,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<PlayerProfile> {
+  const { token, profile: currentProfile } = await ensureAuthenticatedPlayer(fetchImpl);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetchImpl(resolveApiPath('/api/v1/auth/login'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      callsign,
+      password,
+      platform: getPlatform(),
+    }),
+  });
+
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to sign in');
+  }
+
+  if (typeof data.playerToken === 'string' && data.playerToken.length > 0) {
+    setStoredToken(data.playerToken);
+  }
+  const updated = normalizeProfile({ ...currentProfile, ...data });
+  setCachedProfile(updated);
+  return updated;
+}
+
+export async function loginWithOAuth(
+  params: {
+    provider: 'apple' | 'google';
+    idToken: string;
+    callsign?: string;
+  },
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<PlayerProfile> {
+  const { token, profile: currentProfile } = await ensureAuthenticatedPlayer(fetchImpl);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetchImpl(resolveApiPath('/api/v1/auth/oauth'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      provider: params.provider,
+      idToken: params.idToken,
+      ...(params.callsign ? { callsign: params.callsign } : {}),
+      platform: getPlatform(),
+    }),
+  });
+
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'OAuth sign-in failed');
+  }
+
+  if (typeof data.playerToken === 'string' && data.playerToken.length > 0) {
+    setStoredToken(data.playerToken);
+  }
+  const updated = normalizeProfile({ ...currentProfile, ...data });
+  setCachedProfile(updated);
+  return updated;
+}
+
 export async function startShiftSession(
   params: { environmentId: EnvironmentId },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)

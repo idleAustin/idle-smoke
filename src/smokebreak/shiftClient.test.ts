@@ -6,6 +6,7 @@ import {
   flushPendingShifts,
   getCachedPlayerProfile,
   getPendingShifts,
+  loginWithPassword,
   resetShiftClientStateForTests,
   startShiftSession,
   submitFinishedShift,
@@ -272,6 +273,58 @@ describe('shiftClient frontend progression & leaderboard client', () => {
     expect(resolveEnvironmentImagePath('environments/parking-garage.jpg', 'capacitor://localhost')).toBe(
       'capacitor://localhost/environments/parking-garage.jpg'
     );
+  });
+
+  it('syncs player progression and unlocked sectors across devices via loginWithPassword and rejects wrong passwords', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    const store = createSqliteStore(db);
+    const fetchMock = createStoreFetch(store);
+
+    try {
+      // Device 1: Guest smokes 5 cigarettes (unlocking 'restaurant'), then registers callsign + password
+      const device1Boot = await bootstrapPlayerSession(fetchMock);
+      const sixtyDrags = Array.from({ length: 60 }, (_, i) => i * 200);
+      await submitFinishedShift(
+        {
+          environmentId: 'alleyway',
+          pressOffsetsMs: sixtyDrags,
+        },
+        fetchMock
+      );
+
+      const claimed = await loginWithPassword('NIGHT-OWL', 'secret-pass', fetchMock);
+      expect(claimed.playerId).toBe(device1Boot.profile.playerId);
+      expect(claimed.callsign).toBe('NIGHT-OWL');
+      expect(claimed.lifetimeSmoked).toBe(5);
+      expect(claimed.unlockedEnvironments).toEqual(['alleyway', 'restaurant']);
+
+      // Simulate Device 2 (fresh storage): starts as a new anonymous guest with 0 butts
+      resetShiftClientStateForTests();
+      const device2Guest = await bootstrapPlayerSession(fetchMock);
+      expect(device2Guest.profile.playerId).not.toBe(device1Boot.profile.playerId);
+      expect(device2Guest.profile.lifetimeSmoked).toBe(0);
+
+      // Wrong password on Device 2 throws error and keeps guest profile
+      await expect(loginWithPassword('NIGHT-OWL', 'wrong-pass', fetchMock)).rejects.toThrow(
+        /Invalid callsign or password/i
+      );
+
+      // Correct password on Device 2 switches stored token & profile to NIGHT-OWL
+      const synced = await loginWithPassword('NIGHT-OWL', 'secret-pass', fetchMock);
+      expect(synced.playerId).toBe(device1Boot.profile.playerId);
+      expect(synced.callsign).toBe('NIGHT-OWL');
+      expect(synced.lifetimeSmoked).toBe(5);
+      expect(synced.unlockedEnvironments).toEqual(['alleyway', 'restaurant']);
+      expect(getCachedPlayerProfile().playerId).toBe(device1Boot.profile.playerId);
+
+      // Subsequent bootstrap on Device 2 stays logged in as NIGHT-OWL
+      const reloaded = await bootstrapPlayerSession(fetchMock);
+      expect(reloaded.profile.playerId).toBe(device1Boot.profile.playerId);
+      expect(reloaded.profile.lifetimeSmoked).toBe(5);
+    } finally {
+      db.close();
+    }
   });
 });
 

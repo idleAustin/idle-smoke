@@ -34,6 +34,12 @@ export interface SmokeBreakLobbyProps {
   selectedRival: RivalOpponent | null;
   onSelectEnvironment: (id: EnvironmentId) => void;
   onSaveCallsign: (nextCallsign: string) => Promise<void>;
+  onLoginPassword?: (callsign: string, password: string) => Promise<void>;
+  onLoginOAuth?: (
+    provider: 'apple' | 'google',
+    idToken: string,
+    callsign?: string
+  ) => Promise<void>;
   onCompleteLogin: () => void;
   onSelectMode: (mode: GameModeId) => void;
   onSelectRival: (rival: RivalOpponent) => void;
@@ -53,13 +59,123 @@ export function resolveRivalList(entries: readonly LeaderboardEntry[]): RivalOpp
   }));
 }
 
+interface AppleAuthWindow extends Window {
+  AppleID?: {
+    auth: {
+      init: (config: {
+        clientId: string;
+        scope: string;
+        redirectURI: string;
+        usePopup: boolean;
+      }) => void;
+      signIn: () => Promise<{
+        authorization?: { id_token?: string };
+        user?: { name?: { firstName?: string; lastName?: string } };
+      }>;
+    };
+  };
+}
+
+function loadExternalScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function requestAppleIdToken(clientId: string): Promise<{ idToken: string; suggestedName?: string }> {
+  await loadExternalScript(
+    'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js'
+  );
+  const win = window as AppleAuthWindow;
+  if (!win.AppleID?.auth) {
+    throw new Error('Apple Sign-In SDK unavailable');
+  }
+  win.AppleID.auth.init({
+    clientId,
+    scope: 'name email',
+    redirectURI: `${window.location.origin}${window.location.pathname}`,
+    usePopup: true,
+  });
+  const response = await win.AppleID.auth.signIn();
+  const idToken = response?.authorization?.id_token;
+  if (!idToken) {
+    throw new Error('Apple Sign-In did not return an ID token');
+  }
+  const firstName = response?.user?.name?.firstName ?? '';
+  return { idToken, suggestedName: firstName || undefined };
+}
+
+function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+    const nonce = globalThis.crypto.randomUUID();
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', clientId);
+    authUrl.searchParams.set('redirect_uri', redirectUri);
+    authUrl.searchParams.set('response_type', 'id_token');
+    authUrl.searchParams.set('scope', 'openid email profile');
+    authUrl.searchParams.set('nonce', nonce);
+    authUrl.searchParams.set('prompt', 'select_account');
+
+    const popup = window.open(authUrl.toString(), 'smokebreak-google-oauth', 'width=500,height=640');
+    if (!popup) {
+      reject(new Error('Google Sign-In popup was blocked by the browser'));
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      try {
+        if (popup.closed) {
+          window.clearInterval(timer);
+          reject(new Error('Google Sign-In window was closed'));
+          return;
+        }
+        if (popup.location.origin === window.location.origin) {
+          const hash = popup.location.hash.startsWith('#')
+            ? popup.location.hash.slice(1)
+            : popup.location.hash;
+          const params = new URLSearchParams(hash);
+          const idToken = params.get('id_token');
+          const err = params.get('error');
+          if (idToken || err) {
+            window.clearInterval(timer);
+            popup.close();
+            if (idToken) resolve(idToken);
+            else reject(new Error(`Google Sign-In error: ${err}`));
+          }
+        }
+      } catch {
+        // Cross-origin while user is on accounts.google.com; wait until redirect back to origin
+      }
+    }, 250);
+  });
+}
+
 function LoginScreen({
   profile,
   onSaveCallsign,
+  onLoginPassword,
+  onLoginOAuth,
   onCompleteLogin,
 }: {
   profile: PlayerProfile;
   onSaveCallsign: (nextCallsign: string) => Promise<void>;
+  onLoginPassword?: (callsign: string, password: string) => Promise<void>;
+  onLoginOAuth?: (
+    provider: 'apple' | 'google',
+    idToken: string,
+    callsign?: string
+  ) => Promise<void>;
   onCompleteLogin: () => void;
 }) {
   const [username, setUsername] = useState(
@@ -72,6 +188,25 @@ function LoginScreen({
   const finishLogin = async (chosenHandle?: string) => {
     setError(null);
     const clean = (chosenHandle ?? username).trim().toUpperCase();
+    if (password.trim().length > 0 && onLoginPassword) {
+      const targetCallsign = clean || profile.callsign;
+      if (!/^[A-Za-z0-9 _-]{2,16}$/.test(targetCallsign)) {
+        setError('Username must be 2–16 characters (letters, numbers, - or _)');
+        return;
+      }
+      setBusy(true);
+      try {
+        await onLoginPassword(targetCallsign, password);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Login failed');
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+      onCompleteLogin();
+      return;
+    }
+
     if (clean && clean !== profile.callsign) {
       if (!/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) {
         setError('Username must be 2–16 characters (letters, numbers, - or _)');
@@ -88,6 +223,43 @@ function LoginScreen({
       setBusy(false);
     }
     onCompleteLogin();
+  };
+
+  const handleOAuthClick = async (provider: 'apple' | 'google') => {
+    setError(null);
+    const appleClientId =
+      typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_APPLE_CLIENT_ID as string | undefined) : undefined;
+    const googleClientId =
+      typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_GOOGLE_CLIENT_ID as string | undefined) : undefined;
+
+    if (provider === 'apple' && !appleClientId) {
+      setError('Apple Sign-In requires VITE_APPLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).');
+      return;
+    }
+    if (provider === 'google' && !googleClientId) {
+      setError('Google Sign-In requires VITE_GOOGLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).');
+      return;
+    }
+    if (!onLoginOAuth) {
+      await finishLogin(username || undefined);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (provider === 'apple') {
+        const { idToken, suggestedName } = await requestAppleIdToken(appleClientId!);
+        await onLoginOAuth('apple', idToken, username.trim() || suggestedName);
+      } else {
+        const idToken = await requestGoogleIdTokenPopup(googleClientId!);
+        await onLoginOAuth('google', idToken, username.trim() || undefined);
+      }
+      setBusy(false);
+      onCompleteLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${provider} sign-in failed`);
+      setBusy(false);
+    }
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -125,14 +297,16 @@ function LoginScreen({
           <button
             type="button"
             className="proto-sso-btn apple"
-            onClick={() => void finishLogin(username || undefined)}
+            disabled={busy}
+            onClick={() => void handleOAuthClick('apple')}
           >
             <span></span> Continue with Apple
           </button>
           <button
             type="button"
             className="proto-sso-btn google"
-            onClick={() => void finishLogin(username || undefined)}
+            disabled={busy}
+            onClick={() => void handleOAuthClick('google')}
           >
             <span>G</span> Continue with Google
           </button>
@@ -574,6 +748,8 @@ export function SmokeBreakLobby(props: SmokeBreakLobbyProps) {
       <LoginScreen
         profile={props.profile}
         onSaveCallsign={props.onSaveCallsign}
+        onLoginPassword={props.onLoginPassword}
+        onLoginOAuth={props.onLoginOAuth}
         onCompleteLogin={props.onCompleteLogin}
       />
     );
@@ -619,3 +795,4 @@ export function SmokeBreakLobby(props: SmokeBreakLobbyProps) {
     />
   );
 }
+

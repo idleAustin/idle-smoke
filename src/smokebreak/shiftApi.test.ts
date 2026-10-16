@@ -558,4 +558,268 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       db.close();
     }
   });
+
+  it('registers and authenticates Callsign + Password across devices via POST /api/v1/auth/login while keeping both devices active and blocking callsign hijacking', async () => {
+    const db = openSqliteDb(':memory:');
+    try {
+      const store = createSqliteStore(db);
+
+      // Device A starts as a guest and smokes 5 cigarettes (unlocking 'restaurant')
+      const { body: guestA } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: JSON.stringify({ platform: 'web' }) },
+        store
+      );
+      const tokenA = String((guestA as Record<string, unknown>).playerToken);
+      const playerIdA = String((guestA as Record<string, unknown>).playerId);
+
+      await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            environmentId: 'alleyway',
+            pressOffsetsMs: makeOffsets(60, 100),
+          }),
+        },
+        store
+      );
+
+      // Device A claims callsign 'MULLET-KING' with password 'smoke-break-secret'
+      const claimRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            callsign: 'mullet-king',
+            password: 'smoke-break-secret',
+            platform: 'web',
+          }),
+        },
+        store
+      );
+      expect(claimRes.status).toBe(200);
+      expect(claimRes.body).toMatchObject({
+        playerId: playerIdA,
+        callsign: 'MULLET-KING',
+        lifetimeSmoked: 5,
+        unlockedEnvironments: ['alleyway', 'restaurant'],
+      });
+
+      // Device B (iOS) tries wrong password -> 401
+      const wrongPassRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: 'MULLET-KING',
+            password: 'wrong-password',
+            platform: 'ios',
+          }),
+        },
+        store
+      );
+      expect(wrongPassRes.status).toBe(401);
+
+      // Device B (iOS) logs in with correct password -> gets a session token for playerIdA with 5 butts & restaurant unlocked
+      const loginBRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: 'MULLET-KING',
+            password: 'smoke-break-secret',
+            platform: 'ios',
+          }),
+        },
+        store
+      );
+      expect(loginBRes.status).toBe(200);
+      const bodyB = loginBRes.body as Record<string, unknown>;
+      expect(bodyB.playerId).toBe(playerIdA);
+      expect(bodyB.callsign).toBe('MULLET-KING');
+      expect(bodyB.lifetimeSmoked).toBe(5);
+      expect(bodyB.unlockedEnvironments).toEqual(['alleyway', 'restaurant']);
+      expect(typeof bodyB.playerToken).toBe('string');
+      const tokenB = String(bodyB.playerToken);
+
+      // Both Device A (tokenA) and Device B (tokenB) remain authenticated simultaneously
+      const meA = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/players/me', authHeader: `Bearer ${tokenA}` },
+        store
+      );
+      const meB = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/players/me', authHeader: `Bearer ${tokenB}` },
+        store
+      );
+      expect(meA.status).toBe(200);
+      expect(meB.status).toBe(200);
+      expect((meB.body as Record<string, unknown>).playerId).toBe(playerIdA);
+
+      // Another anonymous player (Device C) cannot hijack 'MULLET-KING' via PATCH /api/v1/players/me
+      const { body: guestC } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: '{}' },
+        store
+      );
+      const tokenC = String((guestC as Record<string, unknown>).playerToken);
+      const hijackRes = await handleApiRequest(
+        {
+          method: 'PATCH',
+          pathname: '/api/v1/players/me',
+          authHeader: `Bearer ${tokenC}`,
+          rawBody: JSON.stringify({ callsign: 'MULLET-KING' }),
+        },
+        store
+      );
+      expect(hijackRes.status).toBe(409);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('verifies Apple and Google RS256 ID tokens against JWKS on POST /api/v1/auth/oauth, links accounts across devices, and rejects forged tokens', async () => {
+    const db = openSqliteDb(':memory:');
+    try {
+      const store = createSqliteStore(db);
+
+      // Generate an RS256 keypair to simulate Apple/Google JWKS signing
+      const keyPair = await globalThis.crypto.subtle.generateKey(
+        {
+          name: 'RSASSA-PKCS1-v1_5',
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: 'SHA-256',
+        },
+        true,
+        ['sign', 'verify']
+      );
+      const publicJwk = await globalThis.crypto.subtle.exportKey('jwk', keyPair.publicKey);
+      const jwksPayload = {
+        keys: [{ ...publicJwk, kid: 'test-key-1', alg: 'RS256', use: 'sig' }],
+      };
+
+      const toBase64Url = (input: string | Uint8Array) => {
+        const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+        return Buffer.from(bytes)
+          .toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+      };
+
+      const signJwt = async (claims: Record<string, unknown>, key = keyPair.privateKey) => {
+        const header = toBase64Url(JSON.stringify({ alg: 'RS256', kid: 'test-key-1', typ: 'JWT' }));
+        const payload = toBase64Url(JSON.stringify(claims));
+        const signingInput = `${header}.${payload}`;
+        const sig = await globalThis.crypto.subtle.sign(
+          'RSASSA-PKCS1-v1_5',
+          key,
+          new TextEncoder().encode(signingInput)
+        );
+        return `${signingInput}.${toBase64Url(new Uint8Array(sig))}`;
+      };
+
+      const jwksFetch = async () =>
+        new Response(JSON.stringify(jwksPayload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+      const nowUnix = 1760550000;
+
+      // Device A smokes 5 cigarettes as guest, then clicks "Continue with Apple"
+      const { body: guestA } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: JSON.stringify({ platform: 'web' }) },
+        store,
+        { nowUnix }
+      );
+      const tokenA = String((guestA as Record<string, unknown>).playerToken);
+      const playerIdA = String((guestA as Record<string, unknown>).playerId);
+
+      await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            environmentId: 'alleyway',
+            pressOffsetsMs: makeOffsets(60, 100),
+          }),
+        },
+        store,
+        { nowUnix }
+      );
+
+      const appleIdToken = await signJwt({
+        iss: 'https://appleid.apple.com',
+        sub: 'apple-user-001',
+        aud: 'com.idlemullet.smokebreak.web',
+        email: 'austin@idlemullet.com',
+        exp: nowUnix + 3600,
+      });
+
+      const appleLoginA = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/oauth',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            provider: 'apple',
+            idToken: appleIdToken,
+            platform: 'web',
+          }),
+        },
+        store,
+        { nowUnix, jwksFetch }
+      );
+      expect(appleLoginA.status).toBe(200);
+      expect(appleLoginA.body).toMatchObject({
+        playerId: playerIdA,
+        callsign: 'AUSTIN',
+        lifetimeSmoked: 5,
+        unlockedEnvironments: ['alleyway', 'restaurant'],
+      });
+
+      // Device B (iOS) logs in with the same Apple identity -> receives playerIdA and 5 smoked butts
+      const appleLoginB = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/oauth',
+          rawBody: JSON.stringify({
+            provider: 'apple',
+            idToken: appleIdToken,
+            platform: 'ios',
+          }),
+        },
+        store,
+        { nowUnix, jwksFetch }
+      );
+      expect(appleLoginB.status).toBe(200);
+      const bodyB = appleLoginB.body as Record<string, unknown>;
+      expect(bodyB.playerId).toBe(playerIdA);
+      expect(bodyB.lifetimeSmoked).toBe(5);
+      expect(typeof bodyB.playerToken).toBe('string');
+
+      // Forged signature token -> 401
+      const forgedToken = `${appleIdToken.slice(0, -4)}AAAA`;
+      const forgedRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/oauth',
+          rawBody: JSON.stringify({
+            provider: 'apple',
+            idToken: forgedToken,
+            platform: 'ios',
+          }),
+        },
+        store,
+        { nowUnix, jwksFetch }
+      );
+      expect(forgedRes.status).toBe(401);
+    } finally {
+      db.close();
+    }
+  });
 });
+

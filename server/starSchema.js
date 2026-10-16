@@ -106,6 +106,20 @@ CREATE INDEX IF NOT EXISTS idx_shift_fact_player
 
 CREATE INDEX IF NOT EXISTS idx_player_dim_best
     ON player_dim (best_smoked DESC, lifetime_smoked DESC, callsign, id);
+
+CREATE TABLE IF NOT EXISTS player_auth (
+    provider     TEXT    NOT NULL CHECK (provider IN ('password', 'google', 'apple', 'session')),
+    provider_sub TEXT    NOT NULL,
+    player_id    TEXT    NOT NULL REFERENCES player_dim(id) ON DELETE CASCADE,
+    secret_hash  TEXT,
+    email        TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (provider, provider_sub)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_player_auth_player
+    ON player_auth (player_id, provider);
 `;
 
 export const UPSERT_ENVIRONMENT_DIM_SQL = `
@@ -256,11 +270,31 @@ export const API_SQL = Object.freeze({
     SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
     FROM player_dim
     WHERE token_hash = ?
+    UNION ALL
+    SELECT p.id, p.callsign, p.platform, p.lifetime_smoked, p.best_smoked, p.shifts_completed, p.created_at, p.updated_at
+    FROM player_auth a
+    INNER JOIN player_dim p ON p.id = a.player_id
+    WHERE a.provider = 'session' AND a.provider_sub = ?
+    LIMIT 1
   `,
   selectPlayerById: `
     SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
     FROM player_dim
     WHERE id = ?
+  `,
+  selectAuthIdentity: `
+    SELECT provider, provider_sub, player_id, secret_hash, email
+    FROM player_auth
+    WHERE provider = ? AND provider_sub = ?
+  `,
+  upsertAuthIdentity: `
+    INSERT INTO player_auth (provider, provider_sub, player_id, secret_hash, email, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, provider_sub) DO UPDATE SET
+      player_id = excluded.player_id,
+      secret_hash = COALESCE(excluded.secret_hash, player_auth.secret_hash),
+      email = COALESCE(excluded.email, player_auth.email),
+      updated_at = excluded.updated_at
   `,
   updatePlayerCallsign: `
     UPDATE player_dim
