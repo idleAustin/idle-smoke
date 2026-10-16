@@ -1,26 +1,13 @@
-export const BREAK_MS = 15_000;
-/** Space presses it takes to finish one cigarette. */
-export const PRESSES_PER_CIGARETTE = 12;
+import {
+  BREAK_MS,
+  PRESSES_PER_CIGARETTE,
+  freshBreak,
+  press,
+  type SmokeBreakState as SmokeBreak,
+} from '../../server/shiftVerifier.js';
 
-export interface SmokeBreak {
-  /** Presses into the current cigarette. */
-  progress: number;
-  smoked: number;
-  /** Set on the first press; the clock only runs from then. */
-  startedAt?: number;
-}
-
-export const freshBreak = (): SmokeBreak => ({ progress: 0, smoked: 0 });
-
-/** One press of the space bar (or tap). Presses after time is up are ignored. */
-export function press(state: SmokeBreak, now: number): SmokeBreak {
-  const startedAt = state.startedAt ?? now;
-  if (now - startedAt >= BREAK_MS) return state;
-  const progress = state.progress + 1;
-  return progress >= PRESSES_PER_CIGARETTE
-    ? { startedAt, progress: 0, smoked: state.smoked + 1 }
-    : { startedAt, progress, smoked: state.smoked };
-}
+export type { SmokeBreak };
+export { BREAK_MS, PRESSES_PER_CIGARETTE, freshBreak, press };
 
 export const remainingMs = (state: SmokeBreak, now: number) =>
   state.startedAt === undefined ? BREAK_MS : Math.max(0, BREAK_MS - (now - state.startedAt));

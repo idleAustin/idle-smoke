@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  API_SQL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
   INSPECT_QUERIES,
@@ -10,6 +11,9 @@ import {
   STAR_SCHEMA_DDL,
   UPSERT_ENVIRONMENT_DIM_SQL,
   buildDateDimRow,
+  buildRejectedShiftWritePlan,
+  buildVerifiedShiftWritePlan,
+  formatLeaderboardResponse,
   normalizeInspectSummary,
 } from './starSchema.js';
 
@@ -93,4 +97,82 @@ export function inspectSqliteDb(db) {
   const leaderboardRows = db.prepare(INSPECT_QUERIES.topLeaderboard).all();
 
   return normalizeInspectSummary(playerRow, shiftRow, envRows, leaderboardRows);
+}
+
+/**
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+export function createSqliteStore(db) {
+  return {
+    /**
+     * @param {{ id: string, callsign: string, tokenHash: string, platform: string, nowUnix: number }} params
+     */
+    async createPlayer({ id, callsign, tokenHash, platform, nowUnix }) {
+      db.prepare(API_SQL.insertPlayer).run(id, callsign, tokenHash, platform, nowUnix, nowUnix);
+      return db.prepare(API_SQL.selectPlayerById).get(id) ?? null;
+    },
+    /**
+     * @param {string} tokenHash
+     */
+    async getPlayerByTokenHash(tokenHash) {
+      return db.prepare(API_SQL.selectPlayerByTokenHash).get(tokenHash) ?? null;
+    },
+    /**
+     * @param {string} playerId
+     * @param {string} callsign
+     * @param {number} nowUnix
+     */
+    async updatePlayerCallsign(playerId, callsign, nowUnix) {
+      db.prepare(API_SQL.updatePlayerCallsign).run(callsign, nowUnix, playerId);
+      return db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null;
+    },
+    /**
+     * @param {{ shiftId: string, playerId: string, environmentId: string, platform: string, nowUnix: number }} params
+     */
+    async createStartedShift({ shiftId, playerId, environmentId, platform, nowUnix }) {
+      const dateKey = ensureDateDim(db, new Date(nowUnix * 1000));
+      db.prepare(API_SQL.insertStartedShift).run(shiftId, playerId, environmentId, dateKey, platform, nowUnix);
+    },
+    /**
+     * @param {string} shiftId
+     */
+    async getShiftById(shiftId) {
+      return db.prepare(API_SQL.selectShiftById).get(shiftId) ?? null;
+    },
+    /**
+     * @param {Parameters<typeof buildRejectedShiftWritePlan>[0]} params
+     */
+    async recordRejectedShift(params) {
+      const plan = buildRejectedShiftWritePlan(params);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(INSERT_DATE_DIM_SQL).run(...plan.dateArgs);
+        db.prepare(plan.shiftSql).run(...plan.shiftArgs);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
+    /**
+     * @param {Parameters<typeof buildVerifiedShiftWritePlan>[0]} params
+     */
+    async recordVerifiedShift(params) {
+      const plan = buildVerifiedShiftWritePlan(params);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(INSERT_DATE_DIM_SQL).run(...plan.dateArgs);
+        db.prepare(plan.shiftSql).run(...plan.shiftArgs);
+        db.prepare(API_SQL.updatePlayerAfterShift).run(...plan.playerArgs);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return db.prepare(API_SQL.selectPlayerById).get(params.playerId) ?? null;
+    },
+    async getLeaderboard() {
+      return formatLeaderboardResponse(inspectSqliteDb(db));
+    },
+  };
 }

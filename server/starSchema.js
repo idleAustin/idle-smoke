@@ -240,3 +240,165 @@ export function formatInspectReport(summary) {
   lines.push('============================================================');
   return lines.join('\n');
 }
+
+export const API_SQL = Object.freeze({
+  insertPlayer: `
+    INSERT INTO player_dim (id, callsign, token_hash, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)
+  `,
+  selectPlayerByTokenHash: `
+    SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
+    FROM player_dim
+    WHERE token_hash = ?
+  `,
+  selectPlayerById: `
+    SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
+    FROM player_dim
+    WHERE id = ?
+  `,
+  updatePlayerCallsign: `
+    UPDATE player_dim
+    SET callsign = ?, updated_at = ?
+    WHERE id = ?
+  `,
+  insertStartedShift: `
+    INSERT INTO shift_fact (id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'started', ?, NULL)
+  `,
+  selectShiftById: `
+    SELECT id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at
+    FROM shift_fact
+    WHERE id = ?
+  `,
+  updateVerifiedShift: `
+    UPDATE shift_fact
+    SET environment_id = ?, date_key = ?, platform = ?, smoked = ?, tap_count = ?, duration_ms = ?, status = 'verified', completed_at = ?
+    WHERE id = ? AND player_id = ?
+  `,
+  insertVerifiedShift: `
+    INSERT INTO shift_fact (id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'verified', ?, ?)
+  `,
+  updateRejectedShift: `
+    UPDATE shift_fact
+    SET status = 'rejected', completed_at = ?
+    WHERE id = ? AND player_id = ?
+  `,
+  insertRejectedShift: `
+    INSERT INTO shift_fact (id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, 0, 0, 0, 'rejected', ?, ?)
+  `,
+  updatePlayerAfterShift: `
+    UPDATE player_dim
+    SET
+      lifetime_smoked = lifetime_smoked + ?,
+      best_smoked = MAX(best_smoked, ?),
+      shifts_completed = shifts_completed + 1,
+      updated_at = ?
+    WHERE id = ?
+  `,
+});
+
+/**
+ * Shared SQL & parameter plan for recording a verified shift across SQLite and D1.
+ * @param {{ shiftId: string, hasExistingStartedRow: boolean, playerId: string, environmentId: string, platform: string, smoked: number, tapCount: number, durationMs: number, startedAt: number, completedAt: number }} params
+ */
+export function buildVerifiedShiftWritePlan(params) {
+  const dateRow = buildDateDimRow(new Date(params.completedAt * 1000));
+  const dateArgs = [
+    dateRow.date_key,
+    dateRow.iso_date,
+    dateRow.year,
+    dateRow.month,
+    dateRow.day_of_month,
+    dateRow.day_of_week,
+  ];
+  const shiftSql = params.hasExistingStartedRow ? API_SQL.updateVerifiedShift : API_SQL.insertVerifiedShift;
+  const shiftArgs = params.hasExistingStartedRow
+    ? [
+        params.environmentId,
+        dateRow.date_key,
+        params.platform,
+        params.smoked,
+        params.tapCount,
+        params.durationMs,
+        params.completedAt,
+        params.shiftId,
+        params.playerId,
+      ]
+    : [
+        params.shiftId,
+        params.playerId,
+        params.environmentId,
+        dateRow.date_key,
+        params.platform,
+        params.smoked,
+        params.tapCount,
+        params.durationMs,
+        params.startedAt,
+        params.completedAt,
+      ];
+  const playerArgs = [params.smoked, params.smoked, params.completedAt, params.playerId];
+  return { dateArgs, shiftSql, shiftArgs, playerArgs };
+}
+
+/**
+ * Shared SQL & parameter plan for flagging a rejected shift across SQLite and D1.
+ * @param {{ shiftId: string, hasExistingStartedRow: boolean, playerId: string, environmentId: string, platform: string, startedAt: number, completedAt: number }} params
+ */
+export function buildRejectedShiftWritePlan(params) {
+  const dateRow = buildDateDimRow(new Date(params.completedAt * 1000));
+  const dateArgs = [
+    dateRow.date_key,
+    dateRow.iso_date,
+    dateRow.year,
+    dateRow.month,
+    dateRow.day_of_month,
+    dateRow.day_of_week,
+  ];
+  const shiftSql = params.hasExistingStartedRow ? API_SQL.updateRejectedShift : API_SQL.insertRejectedShift;
+  const shiftArgs = params.hasExistingStartedRow
+    ? [params.completedAt, params.shiftId, params.playerId]
+    : [
+        params.shiftId,
+        params.playerId,
+        params.environmentId,
+        dateRow.date_key,
+        params.platform,
+        params.startedAt,
+        params.completedAt,
+      ];
+  return { dateArgs, shiftSql, shiftArgs };
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ */
+export function formatPlayerProfile(row) {
+  const lifetimeSmoked = Number(row.lifetime_smoked ?? 0);
+  return {
+    playerId: String(row.id),
+    callsign: String(row.callsign),
+    platform: String(row.platform ?? 'web'),
+    lifetimeSmoked,
+    bestSmoked: Number(row.best_smoked ?? 0),
+    shiftsCompleted: Number(row.shifts_completed ?? 0),
+    unlockedEnvironments: getUnlockedEnvironments(lifetimeSmoked),
+  };
+}
+
+/**
+ * @param {ReturnType<typeof normalizeInspectSummary>} summary
+ */
+export function formatLeaderboardResponse(summary) {
+  return {
+    entries: summary.leaderboard,
+    stats: {
+      totalPlayers: summary.totals.totalPlayers,
+      totalShifts: summary.totals.totalVerifiedShifts,
+      totalSmoked: summary.totals.totalSmoked,
+    },
+  };
+}
+
+
