@@ -25,6 +25,24 @@ function buildCommit() {
 
 const isBrowserTest = process.env.SMOKE_BROWSER_TEST === '1';
 
+if (!isBrowserTest && (!process.env.VITE_APPLE_CLIENT_ID || !process.env.VITE_GOOGLE_CLIENT_ID)) {
+  try {
+    const raw = execFileSync(
+      'doppler',
+      ['--no-check-version', 'secrets', 'download', '--no-file', '--format', 'json'],
+      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }
+    ).toString();
+    const secrets = JSON.parse(raw) as Record<string, string>;
+    for (const [key, val] of Object.entries(secrets)) {
+      if (key.startsWith('VITE_') && !process.env[key] && typeof val === 'string') {
+        process.env[key] = val;
+      }
+    }
+  } catch {
+    // Fallback gracefully when Doppler CLI is unavailable in CI/offline environments
+  }
+}
+
 function smokeBreakApiPlugin(): Plugin {
   return {
     name: 'smoke-break-api',

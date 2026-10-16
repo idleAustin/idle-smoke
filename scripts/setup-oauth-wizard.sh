@@ -211,7 +211,10 @@ step "Under Domains and Subdomains, add: idlemullet.com, idle-smoke-staging.idle
 step "Under Return URLs, add: https://idlemullet.com/idle-smoke/ and https://idle-smoke-staging.idleaustin.workers.dev/idle-smoke/"
 step "Click Next → Done → Continue → Save."
 ask VITE_APPLE_CLIENT_ID "Paste your Services ID Identifier (e.g. com.idlemullet.smokebreak.web):"
-write_env VITE_APPLE_CLIENT_ID "$VITE_APPLE_CLIENT_ID"
+for cfg in dev stg prd; do
+  doppler --no-check-version secrets set VITE_APPLE_CLIENT_ID="$VITE_APPLE_CLIENT_ID" --project idle-smoke --config "$cfg" --silent
+done
+say "✓ Saved VITE_APPLE_CLIENT_ID to Doppler (idle-smoke: dev, stg, prd)"
 
 # ── Stage 3: Google OAuth 2.0 Web Client ID (VITE_GOOGLE_CLIENT_ID) ───────
 stage "Google Cloud Console — OAuth 2.0 Client ID"
@@ -230,7 +233,10 @@ note "    https://idle-smoke-staging.idleaustin.workers.dev/idle-smoke/"
 note "    http://127.0.0.1:5176/idle-smoke/"
 step "Click 'Create' and copy the Client ID (ends with .apps.googleusercontent.com)."
 ask VITE_GOOGLE_CLIENT_ID "Paste your Google Client ID:"
-write_env VITE_GOOGLE_CLIENT_ID "$VITE_GOOGLE_CLIENT_ID"
+for cfg in dev stg prd; do
+  doppler --no-check-version secrets set VITE_GOOGLE_CLIENT_ID="$VITE_GOOGLE_CLIENT_ID" --project idle-smoke --config "$cfg" --silent
+done
+say "✓ Saved VITE_GOOGLE_CLIENT_ID to Doppler (idle-smoke: dev, stg, prd)"
 
 # ──────────────────────────────────────────────────────────────────────────
 
