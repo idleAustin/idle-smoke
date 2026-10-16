@@ -349,9 +349,22 @@ export function resetShiftClientStateForTests(): void {
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+function resolveApiPath(apiPath: string): string {
+  const rawBase =
+    typeof import.meta !== 'undefined' && typeof import.meta.env?.BASE_URL === 'string'
+      ? import.meta.env.BASE_URL
+      : '/';
+  const normalizedBase = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
+  const normalizedPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  if (!normalizedBase || normalizedBase === '/' || normalizedBase.startsWith('capacitor://')) {
+    return normalizedPath;
+  }
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 async function fetchLeaderboard(fetchImpl: FetchLike): Promise<LeaderboardResponse> {
   try {
-    const res = await fetchImpl('/api/v1/leaderboard', { method: 'GET' });
+    const res = await fetchImpl(resolveApiPath('/api/v1/leaderboard'), { method: 'GET' });
     if (res.ok) {
       const data = (await res.json()) as LeaderboardResponse;
       memoryLeaderboard = data;
@@ -376,7 +389,7 @@ async function ensureAuthenticatedPlayer(
       return { token: existingToken, profile: getCachedPlayerProfile(), reachable: true };
     }
     try {
-      const meRes = await fetchImpl('/api/v1/players/me', {
+      const meRes = await fetchImpl(resolveApiPath('/api/v1/players/me'), {
         method: 'GET',
         headers: { Authorization: `Bearer ${existingToken}` },
       });
@@ -403,7 +416,7 @@ async function ensureAuthenticatedPlayer(
   }
 
   try {
-    const createRes = await fetchImpl('/api/v1/players', {
+    const createRes = await fetchImpl(resolveApiPath('/api/v1/players'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ platform: getPlatform() }),
@@ -470,7 +483,7 @@ export async function flushPendingShifts(
     while (queue.length > 0) {
       const item = queue[0];
       try {
-        const res = await fetchImpl('/api/v1/shifts/finish', {
+        const res = await fetchImpl(resolveApiPath('/api/v1/shifts/finish'), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${auth.token}`,
@@ -575,7 +588,7 @@ export async function updatePlayerCallsign(
     throw new Error('Player session is not authenticated');
   }
 
-  const res = await fetchImpl('/api/v1/players/me', {
+  const res = await fetchImpl(resolveApiPath('/api/v1/players/me'), {
     method: 'PATCH',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -615,7 +628,7 @@ export async function startShiftSession(
   );
 
   try {
-    const res = await fetchImpl('/api/v1/shifts/start', {
+    const res = await fetchImpl(resolveApiPath('/api/v1/shifts/start'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -714,7 +727,7 @@ export async function submitFinishedShift(
         payload.startedAt = startedAt;
       }
 
-      const res = await fetchImpl('/api/v1/shifts/finish', {
+      const res = await fetchImpl(resolveApiPath('/api/v1/shifts/finish'), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
