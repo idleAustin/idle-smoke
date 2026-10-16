@@ -73,6 +73,8 @@ export function CallsignBadge({
   );
 }
 
+import { type GameModeId, type RivalOpponent } from './SmokeBreakLobby';
+
 export function BreakReportDialog({
   verifiedEnvironment,
   smoked,
@@ -81,9 +83,12 @@ export function BreakReportDialog({
   newlyUnlockedEnvironments,
   profile,
   leaderboardEntries,
+  gameMode = 'sandbox',
+  rival = null,
   armed,
   newShiftRef,
   onFinish,
+  onOpenModes,
 }: {
   verifiedEnvironment: SmokeEnvironment;
   smoked: number;
@@ -92,11 +97,22 @@ export function BreakReportDialog({
   newlyUnlockedEnvironments: readonly EnvironmentId[];
   profile: PlayerProfile;
   leaderboardEntries: readonly LeaderboardEntry[];
+  gameMode?: GameModeId;
+  rival?: RivalOpponent | null;
   armed: boolean;
   newShiftRef: RefObject<HTMLButtonElement>;
   onFinish(): void;
+  onOpenModes?(): void;
 }) {
   const plural = (n: number) => `${n} ${n === 1 ? 'cigarette' : 'cigarettes'}`;
+  const h2hOutcome =
+    gameMode === 'h2h' && rival
+      ? smoked > rival.smoked
+        ? `1v1 VICTORY · Beat ${rival.callsign} (${smoked} to ${rival.smoked} butts)`
+        : smoked === rival.smoked
+          ? `1v1 DRAW · Tied ${rival.callsign} (${smoked} butts each)`
+          : `1v1 DEFEAT · ${rival.callsign} smoked ${rival.smoked} butts (you had ${smoked})`
+      : null;
 
   return (
     <section
@@ -105,9 +121,16 @@ export function BreakReportDialog({
       aria-labelledby="smoke-result-title"
       onPointerDown={e => e.stopPropagation()}
     >
-      <span className="eyebrow">BREAK REPORT · {verifiedEnvironment.name.toUpperCase()}</span>
+      <span className="eyebrow">
+        BREAK REPORT · {gameMode.toUpperCase()} · {verifiedEnvironment.name.toUpperCase()}
+      </span>
       <h2 id="smoke-result-title">{plural(smoked)} in {BREAK_MS / 1000} seconds</h2>
       <p>Supervisor's waving you back in.</p>
+      {h2hOutcome && (
+        <div className="unlock-banner" role="status">
+          {h2hOutcome}
+        </div>
+      )}
       <dl className="break-report-stats" aria-label="Shift and career stats">
         <div>
           <dt>VERIFIED SHIFT</dt>
@@ -143,9 +166,21 @@ export function BreakReportDialog({
           ))}
         </ol>
       </section>
-      <button type="button" className="ship" ref={newShiftRef} disabled={!armed} onClick={onFinish}>
-        Start new shift
-      </button>
+      <div className="smoke-result-actions">
+        <button type="button" className="ship" ref={newShiftRef} disabled={!armed} onClick={onFinish}>
+          Start new shift
+        </button>
+        {onOpenModes && (
+          <button
+            type="button"
+            className="callsign-edit-btn"
+            disabled={!armed}
+            onClick={onOpenModes}
+          >
+            Change Mode / Map
+          </button>
+        )}
+      </div>
     </section>
   );
 }

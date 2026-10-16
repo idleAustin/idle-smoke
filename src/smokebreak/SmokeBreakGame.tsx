@@ -26,6 +26,12 @@ import {
   remainingMs,
 } from './smokeBreak';
 import { BreakReportDialog, CallsignBadge } from './SmokeBreakHud';
+import {
+  SmokeBreakLobby,
+  type GameModeId,
+  type LobbyStep,
+  type RivalOpponent,
+} from './SmokeBreakLobby';
 import { SmokeBreakScene } from './SmokeBreakScene';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
@@ -33,10 +39,22 @@ export function SmokeBreakGame({
   finish,
   environmentId: controlledEnvId,
   onEnvironmentChange,
+  lobbyStep: controlledLobbyStep,
+  onLobbyStepChange,
+  gameMode: controlledGameMode,
+  onGameModeChange,
+  selectedRival: controlledRival,
+  onSelectRival: onControlledRivalChange,
 }: {
   finish(): void;
   environmentId?: EnvironmentId;
   onEnvironmentChange?: (id: EnvironmentId) => void;
+  lobbyStep?: LobbyStep;
+  onLobbyStepChange?: (step: LobbyStep) => void;
+  gameMode?: GameModeId;
+  onGameModeChange?: (mode: GameModeId) => void;
+  selectedRival?: RivalOpponent | null;
+  onSelectRival?: (rival: RivalOpponent) => void;
 }) {
   const [session, dispatch] = useReducer(recordShiftDrag, undefined, freshShiftSession);
   const { state, pressOffsetsMs } = session;
@@ -47,22 +65,44 @@ export function SmokeBreakGame({
   const setEnvId = onEnvironmentChange ?? setLocalEnvId;
   const env = getEnvironment(envId);
 
+  const [localLobbyStep, setLocalLobbyStep] = useState<LobbyStep>('login');
+  const lobbyStep = controlledLobbyStep ?? localLobbyStep;
+  const setLobbyStep = onLobbyStepChange ?? setLocalLobbyStep;
+
+  const [localGameMode, setLocalGameMode] = useState<GameModeId>('campaign');
+  const gameMode = controlledGameMode ?? localGameMode;
+  const setGameMode = onGameModeChange ?? setLocalGameMode;
+
+  const [localRival, setLocalRival] = useState<RivalOpponent | null>(null);
+  const selectedRival = controlledRival !== undefined ? controlledRival : localRival;
+  const setSelectedRival = onControlledRivalChange ?? setLocalRival;
+
   const [profile, setProfile] = useState<PlayerProfile>(() => getCachedPlayerProfile());
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>(() => getCachedLeaderboard());
   const [shiftResult, setShiftResult] = useState<ShiftFinishResult | null>(null);
+
+  const isLobbyOpen = lobbyStep !== 'game' && state.startedAt === undefined;
+  const isLobbyOpenRef = useRef(isLobbyOpen);
+  isLobbyOpenRef.current = isLobbyOpen;
 
   const done = state.startedAt !== undefined && remainingMs(state, now) === 0;
   const doneRef = useRef(done);
   doneRef.current = done;
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<SmokeBreakScene>();
-  const drag = () => { if (!doneRef.current) dispatch(performance.now()); };
+  const drag = () => {
+    if (isLobbyOpenRef.current) return;
+    if (!doneRef.current) dispatch(performance.now());
+  };
   /** Touch devices tap anywhere on the screen; every finger that lands is a drag. */
   const [touch] = useState(() => isNativeMobile() || window.matchMedia('(pointer: coarse)').matches);
   const tap = (event: PointerEvent) => {
     if (
+      isLobbyOpenRef.current ||
       event.button !== 0 ||
-      (event.target as Element).closest('button, input, form, .env-deck, .hud-command, .smoke-result')
+      (event.target as Element).closest(
+        'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay'
+      )
     ) {
       return;
     }
@@ -225,6 +265,15 @@ export function SmokeBreakGame({
             setProfile(updated);
           }}
         />
+        {state.startedAt === undefined && (
+          <button
+            type="button"
+            className="callsign-edit-btn"
+            onClick={() => setLobbyStep('modes')}
+          >
+            Modes / Map
+          </button>
+        )}
       </div>
       <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
     </header>
@@ -263,8 +312,36 @@ export function SmokeBreakGame({
         <div className="smoke-tally-career" aria-label="Career smoke break stats">
           <span>LIFETIME: {reportLifetimeSmoked}</span>
           <span>BEST: {reportBestSmoked}</span>
+          {gameMode === 'h2h' && selectedRival && (
+            <span>VS {selectedRival.callsign}: {selectedRival.smoked}</span>
+          )}
         </div>
       </section>
+      {lobbyStep !== 'game' && state.startedAt === undefined && (
+        <SmokeBreakLobby
+          step={lobbyStep}
+          profile={profile}
+          currentEnv={env}
+          unlockedEnvironments={reportUnlockedEnvironments}
+          leaderboardEntries={leaderboard.entries}
+          selectedRival={selectedRival}
+          onSelectEnvironment={setEnvId}
+          onSaveCallsign={async nextCallsign => {
+            const updated = await updatePlayerCallsign(nextCallsign);
+            setProfile(updated);
+          }}
+          onCompleteLogin={() => setLobbyStep('modes')}
+          onSelectMode={mode => {
+            setGameMode(mode);
+            if (mode === 'campaign') setLobbyStep('map');
+            else if (mode === 'h2h') setLobbyStep('h2h');
+            else setLobbyStep('game');
+          }}
+          onSelectRival={setSelectedRival}
+          onSetStep={setLobbyStep}
+          onStartShift={() => setLobbyStep('game')}
+        />
+      )}
       {done && (
         <BreakReportDialog
           verifiedEnvironment={verifiedEnv}
@@ -274,9 +351,15 @@ export function SmokeBreakGame({
           newlyUnlockedEnvironments={reportNewlyUnlocked}
           profile={profile}
           leaderboardEntries={leaderboardEntries}
+          gameMode={gameMode}
+          rival={selectedRival}
           armed={armed}
           newShiftRef={newShift}
           onFinish={finish}
+          onOpenModes={() => {
+            setLobbyStep('modes');
+            finish();
+          }}
         />
       )}
     </section>

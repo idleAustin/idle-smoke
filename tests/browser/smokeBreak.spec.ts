@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 15-second break, and starts a fresh shift', async ({ page }) => {
+test('signs in, selects Campaign mode and Sector Map, smokes a cigarette in 12 drags, completes the 15-second break, and starts a fresh shift', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -15,21 +15,35 @@ test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 1
 
   await expect(canvas).toBeVisible();
   await expect(timer).toHaveText('0:15');
+
+  // Step 1: Login modal is presented first. Sign in with callsign DOCK-LEAD.
+  const loginDialog = page.getByRole('dialog', { name: 'Sign in to Smoke Break' });
+  await expect(loginDialog).toBeVisible();
+  await loginDialog.getByRole('textbox', { name: 'Login callsign' }).fill('DOCK-LEAD');
+  await loginDialog.getByRole('button', { name: /Sign In & Choose Game Mode/ }).click();
+
+  // Step 2: 3-Card Game Mode Selection (Campaign, Head-to-Head, Sandbox).
+  const modeRegion = page.getByRole('region', { name: 'Select Game Mode' });
+  await expect(modeRegion).toBeVisible();
+  await expect(modeRegion.getByRole('heading', { name: 'Campaign · Sector Map' })).toBeVisible();
+  await expect(modeRegion.getByRole('heading', { name: 'Head-to-Head' })).toBeVisible();
+  await expect(modeRegion.getByRole('heading', { name: 'Sandbox · Free Break' })).toBeVisible();
+  await modeRegion.getByRole('button', { name: /Open Sector Map/ }).click();
+
+  // Step 3: Campaign Blueprint Sector Map.
+  const mapRegion = page.getByRole('region', { name: 'Campaign Sector Map' });
+  await expect(mapRegion).toBeVisible();
+  await mapRegion.getByRole('button', { name: /Deploy to Alleyway/ }).click();
+
+  // Step 4: Active 3D Smoke Break viewport.
   await expect(page.getByRole('heading', { name: 'Light up.' })).toBeVisible();
   await expect(tally.locator('strong')).toHaveText('0');
+  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · DOCK-LEAD');
 
   // Environment deck displays unlock milestone badges (5, 15, 30 lifetime cigarettes).
   await expect(page.getByLabel('Unlock milestone: 5 lifetime cigarettes')).toHaveText('5 BUTTS');
   await expect(page.getByLabel('Unlock milestone: 15 lifetime cigarettes')).toHaveText('15 BUTTS');
   await expect(page.getByLabel('Unlock milestone: 30 lifetime cigarettes')).toHaveText('30 BUTTS');
-
-  // Players can view and update their employee callsign badge from the HUD header without starting the clock.
-  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · SHIFT-');
-  await page.getByRole('button', { name: 'Edit employee callsign' }).click();
-  const callsignInput = page.getByRole('textbox', { name: 'Employee callsign' });
-  await callsignInput.fill('DOCK-LEAD');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · DOCK-LEAD');
 
   // Clock waits until the first drag, even when switching environments.
   await expect(page.getByRole('img', { name: 'Environment backdrop: Alleyway' })).toBeVisible();
@@ -66,6 +80,3 @@ test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 1
   await expect(page.getByRole('img', { name: 'Environment backdrop: Parking Garage' })).toBeVisible();
   expect(errors).toEqual([]);
 });
-
-
-

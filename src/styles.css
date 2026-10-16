@@ -990,5 +990,592 @@ kbd {
   }
 }
 
+.smoke-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ========================================================
+   Smoke Break Lobby — Login, 3-Card Modes, Map & 1v1 Duel
+   ======================================================== */
+
+.proto-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: radial-gradient(circle at 50% 35%, rgba(10, 10, 12, 0.45), rgba(10, 10, 12, 0.88));
+  backdrop-filter: blur(8px);
+  overflow-y: auto;
+}
+
+.proto-chip {
+  padding: 3px 8px;
+  border-radius: var(--as-radius-pill);
+  border: 1px solid rgba(132, 204, 22, 0.35);
+  background: var(--as-accent-muted);
+  color: var(--as-accent-primary);
+  font: 600 10px var(--as-font-mono);
+  letter-spacing: 0.08em;
+}
+
+.proto-pill-tag {
+  padding: 2px 6px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-accent-primary);
+  color: var(--as-accent-text);
+  font: 800 9px var(--as-font-mono);
+  letter-spacing: 0.08em;
+}
+
+.proto-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--as-text-secondary);
+  line-height: 1.45;
+}
+
+.proto-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--as-accent-primary);
+  font: 600 11px var(--as-font-mono);
+  cursor: pointer;
+}
+
+.proto-link-btn:hover {
+  text-decoration: underline;
+}
+
+.proto-valid {
+  color: var(--as-accent-primary);
+  font: 500 11px var(--as-font-mono);
+}
+
+.proto-error {
+  color: var(--as-status-error);
+  font: 500 11px var(--as-font-mono);
+}
+
+.proto-id-hint {
+  font: 500 10px var(--as-font-mono);
+  color: var(--as-text-muted);
+}
+
+.proto-cta-primary {
+  width: 100%;
+  justify-content: center;
+  padding: 13px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.proto-a-card {
+  width: min(460px, 100%);
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+  background: rgba(18, 18, 22, 0.94);
+  border: 1px solid var(--as-border-strong);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(132, 204, 22, 0.14);
+}
+
+.proto-step-indicator {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-text-muted);
+  letter-spacing: 0.08em;
+}
+
+.proto-step-indicator .active {
+  color: var(--as-accent-primary);
+}
+
+.proto-login-header h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+}
+
+.proto-sso-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.proto-sso-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+  font: 600 13px var(--as-font-body);
+  cursor: pointer;
+  transition: border-color var(--as-duration-fast), background var(--as-duration-fast);
+}
+
+.proto-sso-btn.apple {
+  background: #f4f4f5;
+  color: #0a0a0c;
+  border-color: #f4f4f5;
+}
+
+.proto-sso-btn:hover {
+  border-color: var(--as-accent-primary);
+}
+
+.proto-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 600 9px var(--as-font-mono);
+  color: var(--as-text-muted);
+  letter-spacing: 0.1em;
+}
+
+.proto-divider::before,
+.proto-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--as-border-subtle);
+}
+
+.proto-login-form {
+  display: grid;
+  gap: 10px;
+}
+
+.proto-field-label {
+  display: grid;
+  gap: 5px;
+}
+
+.proto-field-label span {
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-text-secondary);
+  letter-spacing: 0.08em;
+}
+
+.proto-field-label input {
+  padding: 10px 12px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-base);
+  color: var(--as-text-primary);
+  font: 600 14px var(--as-font-mono);
+  outline: none;
+}
+
+.proto-field-label input:focus {
+  border-color: var(--as-accent-primary);
+  box-shadow: 0 0 0 2px var(--as-accent-muted);
+}
+
+.proto-login-footer {
+  text-align: center;
+  padding-top: 6px;
+  border-top: 1px solid var(--as-border-subtle);
+}
+
+.proto-a-spot-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.proto-spot-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-subtle);
+  background: var(--as-bg-surface);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-body);
+  cursor: pointer;
+  text-align: left;
+}
+
+.proto-spot-pill.active {
+  border-color: var(--as-accent-primary);
+  background: var(--as-accent-muted);
+}
+
+.proto-spot-pill.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.proto-spot-pill small {
+  font: 500 10px var(--as-font-mono);
+  color: var(--as-text-muted);
+}
+
+.proto-a-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--as-radius-md);
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.proto-a-stats-row span {
+  display: block;
+  font: 600 9px var(--as-font-mono);
+  color: var(--as-text-muted);
+}
+
+.proto-a-stats-row strong {
+  font: 700 13px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+
+/* --- 3-Card Mode Deck & Blueprint Sector Map --- */
+.proto-map-shell {
+  width: min(1060px, 100%);
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+  background: rgba(14, 14, 18, 0.95);
+  border: 1px solid var(--as-border-strong);
+}
+
+.proto-map-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.proto-map-topbar h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+
+.proto-map-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--as-radius-pill);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  font: 600 12px var(--as-font-mono);
+}
+
+.proto-sync-tag {
+  color: var(--as-accent-primary);
+}
+
+.proto-modes-three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.proto-mode-card {
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-base);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.proto-mode-card.featured {
+  border-color: var(--as-accent-primary);
+  box-shadow: 0 0 0 1px var(--as-accent-primary), 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.proto-mode-banner {
+  margin: -16px -16px 4px;
+  height: 110px;
+  padding: 12px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.proto-mode-banner.h2h-banner {
+  background:
+    radial-gradient(circle at 80% 20%, rgba(244, 63, 94, 0.28), transparent 60%),
+    linear-gradient(135deg, #18181f, #0c0c10);
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+
+.proto-mode-banner.sandbox-banner {
+  background:
+    radial-gradient(circle at 20% 80%, rgba(56, 189, 248, 0.22), transparent 60%),
+    linear-gradient(135deg, #161820, #0c0c10);
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+
+.proto-mode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.proto-mode-body h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.proto-mode-meta-box {
+  margin-top: auto;
+  padding: 10px 12px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+  display: grid;
+  gap: 3px;
+}
+
+.proto-mode-meta-box span {
+  font: 600 9px var(--as-font-mono);
+  color: var(--as-text-muted);
+  letter-spacing: 0.08em;
+}
+
+.proto-mode-meta-box strong {
+  font: 700 12px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+
+.proto-map-layout {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 16px;
+}
+
+.proto-blueprint-canvas {
+  position: relative;
+  min-height: 410px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-strong);
+  background: #0c1012;
+  overflow: hidden;
+}
+
+.proto-blueprint-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.24;
+  filter: saturate(0.6) contrast(1.1);
+  transition: background-image 250ms ease;
+}
+
+.proto-blueprint-grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(132, 204, 22, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(132, 204, 22, 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.proto-map-paths {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.proto-map-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: var(--as-radius-md);
+  background: rgba(18, 18, 22, 0.94);
+  border: 1px solid var(--as-border-strong);
+  color: var(--as-text-primary);
+  text-align: left;
+  cursor: pointer;
+  min-width: 148px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.65);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.proto-map-pin:hover:not(.locked) {
+  transform: translate(-50%, -53%) scale(1.03);
+  border-color: var(--as-accent-primary);
+}
+
+.proto-map-pin.selected {
+  border-color: var(--as-accent-primary);
+  box-shadow: 0 0 0 2px var(--as-accent-primary), 0 0 24px var(--as-accent-glow);
+}
+
+.proto-map-pin.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.proto-pin-code {
+  font: 700 9px var(--as-font-mono);
+  color: var(--as-accent-primary);
+  letter-spacing: 0.08em;
+}
+
+.proto-pin-dot {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--as-accent-primary);
+  color: var(--as-accent-text);
+  font: 800 11px var(--as-font-mono);
+}
+
+.proto-map-pin.locked .proto-pin-dot {
+  background: var(--as-bg-overlay);
+  color: var(--as-text-muted);
+}
+
+.proto-pin-title {
+  font-size: 13px;
+}
+
+.proto-pin-sub {
+  font: 500 10px var(--as-font-mono);
+  color: var(--as-text-secondary);
+}
+
+.proto-map-inspector {
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-subtle);
+  background: var(--as-bg-base);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.proto-inspector-preview {
+  height: 120px;
+  background-size: cover;
+  background-position: center;
+  padding: 10px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.proto-inspector-body {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  flex: 1;
+}
+
+.proto-inspector-body h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.proto-mini-board {
+  display: grid;
+  gap: 6px;
+}
+
+/* --- Head-to-Head 1v1 Lobby --- */
+.proto-h2h-shell {
+  width: min(640px, 100%);
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+  background: rgba(14, 14, 18, 0.96);
+  border: 1px solid var(--as-border-strong);
+}
+
+.proto-h2h-vs-banner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.proto-fighter-card {
+  padding: 16px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-accent-primary);
+  background: var(--as-bg-base);
+  display: grid;
+  gap: 4px;
+}
+
+.proto-fighter-card.rival {
+  border-color: var(--as-status-error);
+}
+
+.proto-fighter-card strong {
+  font: 800 20px var(--as-font-mono);
+}
+
+.proto-fighter-card small {
+  font: 500 11px var(--as-font-mono);
+  color: var(--as-text-secondary);
+}
+
+.proto-vs-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  font: 800 12px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+
+.proto-h2h-rival-picker {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 860px) {
+  .proto-modes-three-col,
+  .proto-map-layout,
+  .proto-h2h-vs-banner {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 
 
