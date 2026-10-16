@@ -1,11 +1,11 @@
 import { normalizeStartedAtUnix, verifyShiftReplay } from '../../server/shiftVerifier.js';
+import { getPlatform, type PlatformId } from '../platform';
+import { platformStorage } from '../platform/storage';
 import {
   type EnvironmentId,
   getUnlockedEnvironments,
   projectShiftProgression,
 } from './smokeBreak';
-
-type PlatformId = 'web' | 'ios' | 'android';
 
 export interface PlayerProfile {
   playerId: string;
@@ -90,40 +90,57 @@ let activeFlushPromise: Promise<{
   leaderboard: LeaderboardResponse;
 }> | null = null;
 
-function readStorageItem(key: string): string | null {
+function parsePendingShiftsJson(raw: string): PendingShift[] | null {
   try {
-    if (typeof globalThis.localStorage !== 'undefined') {
-      return globalThis.localStorage.getItem(key);
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      const valid: PendingShift[] = [];
+      for (const entry of parsed) {
+        if (typeof entry !== 'object' || entry === null) continue;
+        const record = entry as Record<string, unknown>;
+        if (typeof record.shiftId !== 'string' || !Array.isArray(record.pressOffsetsMs)) continue;
+        valid.push({
+          shiftId: record.shiftId,
+          environmentId: (record.environmentId as EnvironmentId) ?? 'alleyway',
+          pressOffsetsMs: record.pressOffsetsMs.map(n => Number(n)),
+          startedAt: resolveStartedAtUnix(record.startedAt),
+        });
+      }
+      return valid;
     }
   } catch {
-    // Ignore storage access errors in restricted environments
+    // Ignore corrupt pending queue JSON
   }
   return null;
 }
 
-function writeStorageItem(key: string, value: string): void {
-  try {
-    if (typeof globalThis.localStorage !== 'undefined') {
-      globalThis.localStorage.setItem(key, value);
-    }
-  } catch {
-    // Ignore storage write errors
+async function hydrateNativeStorage(): Promise<void> {
+  const [token, profile, pending] = await Promise.all([
+    platformStorage.get(TOKEN_STORAGE_KEY),
+    platformStorage.get(PROFILE_STORAGE_KEY),
+    platformStorage.get(PENDING_SHIFTS_STORAGE_KEY),
+  ]);
+  if (token && !memoryToken) {
+    memoryToken = token;
   }
-}
-
-function removeStorageItem(key: string): void {
-  try {
-    if (typeof globalThis.localStorage !== 'undefined') {
-      globalThis.localStorage.removeItem(key);
+  if (profile && !memoryProfile) {
+    try {
+      memoryProfile = normalizeProfile(JSON.parse(profile) as Record<string, unknown>);
+    } catch {
+      // Ignore corrupt profile JSON
     }
-  } catch {
-    // Ignore storage removal errors
+  }
+  if (pending && (memoryPendingShifts === null || memoryPendingShifts.length === 0)) {
+    const parsed = parsePendingShiftsJson(pending);
+    if (parsed !== null) {
+      memoryPendingShifts = parsed;
+    }
   }
 }
 
 function getStoredToken(): string | null {
   if (memoryToken) return memoryToken;
-  const fromStorage = readStorageItem(TOKEN_STORAGE_KEY);
+  const fromStorage = platformStorage.getSync(TOKEN_STORAGE_KEY);
   if (fromStorage) {
     memoryToken = fromStorage;
     return fromStorage;
@@ -133,16 +150,16 @@ function getStoredToken(): string | null {
 
 function setStoredToken(token: string): void {
   memoryToken = token;
-  writeStorageItem(TOKEN_STORAGE_KEY, token);
+  platformStorage.setSync(TOKEN_STORAGE_KEY, token);
 }
 
 function clearStoredToken(): void {
   memoryToken = null;
-  removeStorageItem(TOKEN_STORAGE_KEY);
+  platformStorage.removeSync(TOKEN_STORAGE_KEY);
 }
 
 function normalizePlatformId(value: unknown): PlatformId {
-  return value === 'ios' || value === 'android' ? value : 'web';
+  return value === 'ios' || value === 'android' ? value : getPlatform();
 }
 
 function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
@@ -163,7 +180,7 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
 
 function setCachedProfile(profile: PlayerProfile): void {
   memoryProfile = profile;
-  writeStorageItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  platformStorage.setSync(PROFILE_STORAGE_KEY, JSON.stringify(profile));
 }
 
 function resolveStartedAtUnix(value: unknown): number {
@@ -175,28 +192,12 @@ function readPendingShiftsFromStorage(): PendingShift[] {
   if (memoryPendingShifts !== null) {
     return memoryPendingShifts;
   }
-  const raw = readStorageItem(PENDING_SHIFTS_STORAGE_KEY);
+  const raw = platformStorage.getSync(PENDING_SHIFTS_STORAGE_KEY);
   if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) {
-        const valid: PendingShift[] = [];
-        for (const entry of parsed) {
-          if (typeof entry !== 'object' || entry === null) continue;
-          const record = entry as Record<string, unknown>;
-          if (typeof record.shiftId !== 'string' || !Array.isArray(record.pressOffsetsMs)) continue;
-          valid.push({
-            shiftId: record.shiftId,
-            environmentId: (record.environmentId as EnvironmentId) ?? 'alleyway',
-            pressOffsetsMs: record.pressOffsetsMs.map(n => Number(n)),
-            startedAt: resolveStartedAtUnix(record.startedAt),
-          });
-        }
-        memoryPendingShifts = valid;
-        return valid;
-      }
-    } catch {
-      // Ignore corrupt pending queue JSON
+    const parsed = parsePendingShiftsJson(raw);
+    if (parsed !== null) {
+      memoryPendingShifts = parsed;
+      return parsed;
     }
   }
   memoryPendingShifts = [];
@@ -205,7 +206,7 @@ function readPendingShiftsFromStorage(): PendingShift[] {
 
 function writePendingShiftsToStorage(queue: PendingShift[]): void {
   memoryPendingShifts = queue;
-  writeStorageItem(PENDING_SHIFTS_STORAGE_KEY, JSON.stringify(queue));
+  platformStorage.setSync(PENDING_SHIFTS_STORAGE_KEY, JSON.stringify(queue));
 }
 
 export function getPendingShifts(): PendingShift[] {
@@ -318,7 +319,7 @@ export function resolveShiftEnvironment(
 
 export function getCachedPlayerProfile(): PlayerProfile {
   if (memoryProfile) return memoryProfile;
-  const raw = readStorageItem(PROFILE_STORAGE_KEY);
+  const raw = platformStorage.getSync(PROFILE_STORAGE_KEY);
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -328,7 +329,7 @@ export function getCachedPlayerProfile(): PlayerProfile {
       // Ignore corrupt cached JSON
     }
   }
-  return DEFAULT_PROFILE;
+  return { ...DEFAULT_PROFILE, platform: getPlatform() };
 }
 
 export function getCachedLeaderboard(): LeaderboardResponse {
@@ -341,9 +342,9 @@ export function resetShiftClientStateForTests(): void {
   memoryLeaderboard = EMPTY_LEADERBOARD;
   memoryPendingShifts = null;
   activeFlushPromise = null;
-  removeStorageItem(TOKEN_STORAGE_KEY);
-  removeStorageItem(PROFILE_STORAGE_KEY);
-  removeStorageItem(PENDING_SHIFTS_STORAGE_KEY);
+  platformStorage.removeSync(TOKEN_STORAGE_KEY);
+  platformStorage.removeSync(PROFILE_STORAGE_KEY);
+  platformStorage.removeSync(PENDING_SHIFTS_STORAGE_KEY);
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -366,6 +367,7 @@ async function ensureAuthenticatedPlayer(
   fetchImpl: FetchLike,
   options: { preserveOptimisticIfPending?: boolean } = {}
 ): Promise<{ token: string | null; profile: PlayerProfile; reachable: boolean }> {
+  await hydrateNativeStorage();
   const existingToken = getStoredToken();
   const hasPending = readPendingShiftsFromStorage().length > 0;
 
@@ -404,7 +406,7 @@ async function ensureAuthenticatedPlayer(
     const createRes = await fetchImpl('/api/v1/players', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform: 'web' satisfies PlatformId }),
+      body: JSON.stringify({ platform: getPlatform() }),
     });
     if (createRes.ok) {
       const raw = (await createRes.json()) as Record<string, unknown>;
@@ -440,6 +442,7 @@ export async function flushPendingShifts(
   }
 
   activeFlushPromise = (async () => {
+    await hydrateNativeStorage();
     const queue = [...readPendingShiftsFromStorage()];
     if (queue.length === 0) {
       return {
@@ -548,6 +551,7 @@ export async function flushPendingShifts(
 export async function bootstrapPlayerSession(
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<{ profile: PlayerProfile; leaderboard: LeaderboardResponse }> {
+  await hydrateNativeStorage();
   if (readPendingShiftsFromStorage().length > 0) {
     const flushed = await flushPendingShifts(fetchImpl);
     if (flushed.remainingCount > 0) {
@@ -594,6 +598,7 @@ export async function startShiftSession(
   params: { environmentId: EnvironmentId },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<StartedShiftSession | null> {
+  await hydrateNativeStorage();
   if (readPendingShiftsFromStorage().length > 0) {
     const flushed = await flushPendingShifts(fetchImpl);
     if (flushed.remainingCount > 0) {
@@ -648,6 +653,7 @@ export async function submitFinishedShift(
 ): Promise<ShiftFinishResult> {
   const shiftId = params.shiftId ?? globalThis.crypto.randomUUID();
   const startedAt = resolveStartedAtUnix(params.startedAt);
+  await hydrateNativeStorage();
 
   // Deduplicate if this exact shiftId is already in the local pending queue
   if (readPendingShiftsFromStorage().some(item => item.shiftId === shiftId)) {

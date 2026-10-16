@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type PointerEvent } from 'react';
+import { isNativeMobile, triggerDragHaptic } from '../platform';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
   bootstrapPlayerSession,
@@ -57,7 +58,7 @@ export function SmokeBreakGame({
   const scene = useRef<SmokeBreakScene>();
   const drag = () => { if (!doneRef.current) dispatch(performance.now()); };
   /** Touch devices tap anywhere on the screen; every finger that lands is a drag. */
-  const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
+  const [touch] = useState(() => isNativeMobile() || window.matchMedia('(pointer: coarse)').matches);
   const tap = (event: PointerEvent) => {
     if (
       event.button !== 0 ||
@@ -65,7 +66,9 @@ export function SmokeBreakGame({
     ) {
       return;
     }
-    if (event.pointerType === 'touch' && !doneRef.current) navigator.vibrate?.(8);
+    if ((event.pointerType === 'touch' || isNativeMobile()) && !doneRef.current) {
+      void triggerDragHaptic();
+    }
     drag();
   };
   // A finger still mashing when time runs out must not land on Start new shift.
