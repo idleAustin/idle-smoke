@@ -7,6 +7,10 @@
     "directory": "./dist",
     "binding": "ASSETS"
   },
+  "vars": {
+    "VITE_APPLE_CLIENT_ID": "com.idlemullet.smokebreak.web",
+    "VITE_GOOGLE_CLIENT_ID": "1025793893376-qi50o9ksk2kigndaie0ap3a1o0jh3dtj.apps.googleusercontent.com"
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -29,6 +33,10 @@
       "name": "idle-smoke-staging",
       "workers_dev": true,
       "routes": [],
+      "vars": {
+        "VITE_APPLE_CLIENT_ID": "com.idlemullet.smokebreak.web",
+        "VITE_GOOGLE_CLIENT_ID": "1025793893376-qi50o9ksk2kigndaie0ap3a1o0jh3dtj.apps.googleusercontent.com"
+      },
       "assets": {
         "directory": "./dist",
         "binding": "ASSETS"

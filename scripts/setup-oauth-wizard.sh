@@ -215,8 +215,8 @@ write_env VITE_APPLE_CLIENT_ID "$VITE_APPLE_CLIENT_ID"
 
 # ── Stage 3: Google OAuth 2.0 Web Client ID (VITE_GOOGLE_CLIENT_ID) ───────
 stage "Google Cloud Console — OAuth 2.0 Client ID"
-say "Now create a Google OAuth 2.0 Web Client ID for 'Continue with Google'."
-open_url "https://console.cloud.google.com/apis/credentials"
+say "Now create a Google OAuth 2.0 Web Client ID for 'Continue with Google' (account: austin@austinsmith.me)."
+open_url "https://console.cloud.google.com/apis/credentials?authuser=austin@austinsmith.me"
 step "Click '+ CREATE CREDENTIALS' at the top → select 'OAuth client ID'."
 step "Set Application type to 'Web application' and Name to 'Idle Smoke Break'."
 step "Under 'Authorized JavaScript origins', add:"

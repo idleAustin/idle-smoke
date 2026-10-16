@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ENVIRONMENTS, type EnvironmentId, type SmokeEnvironment } from './EnvironmentDeck';
 import { type LeaderboardEntry, type PlayerProfile } from './shiftClient';
 
@@ -127,19 +127,46 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
     authUrl.searchParams.set('nonce', nonce);
     authUrl.searchParams.set('prompt', 'select_account');
 
+    let settled = false;
+    const channel =
+      typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('smokebreak-oauth') : null;
+
+    const finish = (idToken: string | null, err: string | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('message', onMessage);
+      channel?.close();
+      if (idToken) resolve(idToken);
+      else reject(new Error(err || 'Google Sign-In cancelled'));
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string; idToken?: string; error?: string } | null;
+      if (data?.type === 'smokebreak-google-oauth') {
+        finish(data.idToken ?? null, data.error ?? null);
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    if (channel) {
+      channel.onmessage = event => {
+        const data = event.data as { type?: string; idToken?: string; error?: string } | null;
+        if (data?.type === 'smokebreak-google-oauth') {
+          finish(data.idToken ?? null, data.error ?? null);
+        }
+      };
+    }
+
     const popup = window.open(authUrl.toString(), 'smokebreak-google-oauth', 'width=500,height=640');
     if (!popup) {
-      reject(new Error('Google Sign-In popup was blocked by the browser'));
+      finish(null, 'Google Sign-In popup was blocked by the browser');
       return;
     }
 
     const timer = window.setInterval(() => {
       try {
-        if (popup.closed) {
-          window.clearInterval(timer);
-          reject(new Error('Google Sign-In window was closed'));
-          return;
-        }
         if (popup.location.origin === window.location.origin) {
           const hash = popup.location.hash.startsWith('#')
             ? popup.location.hash.slice(1)
@@ -148,10 +175,8 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
           const idToken = params.get('id_token');
           const err = params.get('error');
           if (idToken || err) {
-            window.clearInterval(timer);
             popup.close();
-            if (idToken) resolve(idToken);
-            else reject(new Error(`Google Sign-In error: ${err}`));
+            finish(idToken, err ? `Google Sign-In error: ${err}` : null);
           }
         }
       } catch {
@@ -184,6 +209,52 @@ function LoginScreen({
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.hash.includes('id_token=')) return;
+    const rawHash = window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const params = new URLSearchParams(rawHash);
+    const idToken = params.get('id_token');
+    const oauthErr = params.get('error');
+    if (!idToken && !oauthErr) return;
+
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    const payload = {
+      type: 'smokebreak-google-oauth',
+      idToken: idToken ?? undefined,
+      error: oauthErr ?? undefined,
+    };
+
+    if (typeof BroadcastChannel !== 'undefined') {
+      const ch = new BroadcastChannel('smokebreak-oauth');
+      ch.postMessage(payload);
+      ch.close();
+    }
+    if (window.opener) {
+      try {
+        window.opener.postMessage(payload, window.location.origin);
+      } catch {
+        // Ignore cross-origin opener errors
+      }
+      window.close();
+      return;
+    }
+
+    if (idToken && onLoginOAuth) {
+      setBusy(true);
+      onLoginOAuth('google', idToken)
+        .then(() => {
+          setBusy(false);
+          onCompleteLogin();
+        })
+        .catch(err => {
+          setError(err instanceof Error ? err.message : 'Google Sign-In failed');
+          setBusy(false);
+        });
+    }
+  }, [onLoginOAuth, onCompleteLogin]);
 
   const finishLogin = async (chosenHandle?: string) => {
     setError(null);
