@@ -267,18 +267,27 @@ export const API_SQL = Object.freeze({
     VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)
   `,
   selectPlayerByTokenHash: `
-    SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
+    SELECT
+      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at,
+      (SELECT provider FROM player_auth WHERE player_id = player_dim.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
+      (SELECT email FROM player_auth WHERE player_id = player_dim.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_dim
     WHERE token_hash = ?
     UNION ALL
-    SELECT p.id, p.callsign, p.platform, p.lifetime_smoked, p.best_smoked, p.shifts_completed, p.created_at, p.updated_at
+    SELECT
+      p.id, p.callsign, p.platform, p.lifetime_smoked, p.best_smoked, p.shifts_completed, p.created_at, p.updated_at,
+      (SELECT provider FROM player_auth WHERE player_id = p.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
+      (SELECT email FROM player_auth WHERE player_id = p.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_auth a
     INNER JOIN player_dim p ON p.id = a.player_id
     WHERE a.provider = 'session' AND a.provider_sub = ?
     LIMIT 1
   `,
   selectPlayerById: `
-    SELECT id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at
+    SELECT
+      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at,
+      (SELECT provider FROM player_auth WHERE player_id = player_dim.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
+      (SELECT email FROM player_auth WHERE player_id = player_dim.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_dim
     WHERE id = ?
   `,
@@ -299,6 +308,18 @@ export const API_SQL = Object.freeze({
   updatePlayerCallsign: `
     UPDATE player_dim
     SET callsign = ?, updated_at = ?
+    WHERE id = ?
+  `,
+  deletePlayerShifts: `
+    DELETE FROM shift_fact
+    WHERE player_id = ?
+  `,
+  deletePlayerAuth: `
+    DELETE FROM player_auth
+    WHERE player_id = ?
+  `,
+  deletePlayerDim: `
+    DELETE FROM player_dim
     WHERE id = ?
   `,
   insertStartedShift: `
@@ -424,6 +445,8 @@ export function formatPlayerProfile(row) {
     bestSmoked: Number(row.best_smoked ?? 0),
     shiftsCompleted: Number(row.shifts_completed ?? 0),
     unlockedEnvironments: getUnlockedEnvironments(lifetimeSmoked),
+    ...(row.auth_provider ? { authProvider: String(row.auth_provider) } : {}),
+    ...(row.auth_email ? { authEmail: String(row.auth_email) } : {}),
   };
 }
 

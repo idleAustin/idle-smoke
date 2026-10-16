@@ -3,12 +3,14 @@ import { isNativeMobile, triggerDragHaptic } from '../platform';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
   bootstrapPlayerSession,
+  deletePlayerAccount,
   flushPendingShifts,
   getCachedLeaderboard,
   getCachedPlayerProfile,
   loginWithOAuth,
   loginWithPassword,
   resolveShiftEnvironment,
+  signOutPlayerSession,
   startShiftSession,
   submitFinishedShift,
   updatePlayerCallsign,
@@ -35,6 +37,7 @@ import {
   type RivalOpponent,
 } from './SmokeBreakLobby';
 import { SmokeBreakScene } from './SmokeBreakScene';
+import { AccountSettingsModal, UserCircleTrigger } from './UserProfileMenu';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
 export function SmokeBreakGame({
@@ -82,6 +85,53 @@ export function SmokeBreakGame({
   const [profile, setProfile] = useState<PlayerProfile>(() => getCachedPlayerProfile());
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>(() => getCachedLeaderboard());
   const [shiftResult, setShiftResult] = useState<ShiftFinishResult | null>(null);
+  const [isQuickCardOpen, setIsQuickCardOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+
+  const handleSignOut = async () => {
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const { previousCallsign, profile: freshGuest, leaderboard: board } =
+        await signOutPlayerSession();
+      setProfile(freshGuest);
+      setLeaderboard(board);
+      setIsQuickCardOpen(false);
+      setIsSettingsModalOpen(false);
+      setStatusBanner(
+        `✓ Signed out of ${previousCallsign} on this device. Your cloud account remains intact.`
+      );
+      setLobbyStep('login');
+    } catch (err) {
+      setAccountError(err instanceof Error ? err.message : 'Failed to sign out');
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const { deletedCallsign, profile: freshGuest, leaderboard: board } =
+        await deletePlayerAccount();
+      setProfile(freshGuest);
+      setLeaderboard(board);
+      setIsQuickCardOpen(false);
+      setIsSettingsModalOpen(false);
+      setStatusBanner(
+        `🗑️ Permanently deleted account ${deletedCallsign} and all associated shifts.`
+      );
+      setLobbyStep('login');
+    } catch (err) {
+      setAccountError(err instanceof Error ? err.message : 'Failed to delete account');
+    } finally {
+      setAccountBusy(false);
+    }
+  };
 
   const isLobbyOpen = lobbyStep !== 'game' && state.startedAt === undefined;
   const isLobbyOpenRef = useRef(isLobbyOpen);
@@ -103,7 +153,7 @@ export function SmokeBreakGame({
       isLobbyOpenRef.current ||
       event.button !== 0 ||
       (event.target as Element).closest(
-        'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay'
+        'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay, .proto-avatar-anchor, .proto-discord-card, .proto-chatgpt-modal'
       )
     ) {
       return;
@@ -277,7 +327,28 @@ export function SmokeBreakGame({
           </button>
         )}
       </div>
-      <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
+      <div className="hud-right-group">
+        <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
+        <UserCircleTrigger
+          profile={profile}
+          isQuickCardOpen={isQuickCardOpen}
+          isSettingsModalOpen={isSettingsModalOpen}
+          busy={accountBusy}
+          onToggleQuickCard={() => {
+            if (isSettingsModalOpen) {
+              setIsSettingsModalOpen(false);
+            } else {
+              setIsQuickCardOpen(open => !open);
+            }
+          }}
+          onOpenSettingsModal={() => {
+            setIsQuickCardOpen(false);
+            setAccountError(null);
+            setIsSettingsModalOpen(true);
+          }}
+          onSignOut={() => void handleSignOut()}
+        />
+      </div>
     </header>
     <section className="smoke-viewport" aria-label="Break area">
       <div
@@ -327,6 +398,8 @@ export function SmokeBreakGame({
           unlockedEnvironments={reportUnlockedEnvironments}
           leaderboardEntries={leaderboard.entries}
           selectedRival={selectedRival}
+          statusBanner={statusBanner}
+          onDismissBanner={() => setStatusBanner(null)}
           onSelectEnvironment={setEnvId}
           onSaveCallsign={async nextCallsign => {
             const updated = await updatePlayerCallsign(nextCallsign);
@@ -350,6 +423,16 @@ export function SmokeBreakGame({
           onSelectRival={setSelectedRival}
           onSetStep={setLobbyStep}
           onStartShift={() => setLobbyStep('game')}
+        />
+      )}
+      {isSettingsModalOpen && (
+        <AccountSettingsModal
+          profile={profile}
+          busy={accountBusy}
+          error={accountError}
+          onClose={() => setIsSettingsModalOpen(false)}
+          onSignOut={() => void handleSignOut()}
+          onDeleteAccount={() => void handleDeleteAccount()}
         />
       )}
       {done && (

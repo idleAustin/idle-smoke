@@ -804,6 +804,8 @@ kbd {
 
 /* HUD Callsign Badge, Career Tally & Post-Shift Global Leaderboard */
 .hud-command {
+  position: relative;
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1575,6 +1577,451 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================
+   Top-Right User Avatar Circle -> Quick Profile Card (C) -> Settings Modal (B)
+   ======================================================== */
+
+.hud-right-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.proto-acct-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--as-radius-sm);
+  background: rgba(132, 204, 22, 0.14);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+}
+
+.proto-avatar-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.proto-user-circle-btn {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid var(--as-border-strong);
+  background: linear-gradient(145deg, rgba(28, 30, 36, 0.96), rgba(14, 15, 19, 0.98));
+  color: var(--as-text-primary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+}
+
+.proto-user-circle-btn:hover,
+.proto-user-circle-btn.is-open {
+  border-color: var(--as-accent-primary);
+  box-shadow: 0 0 0 3px rgba(132, 204, 22, 0.18), 0 6px 18px rgba(0, 0, 0, 0.55);
+  color: var(--as-accent-primary);
+}
+
+.proto-user-circle-svg {
+  width: 19px;
+  height: 19px;
+}
+
+.proto-user-circle-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #0c0d10;
+}
+
+.proto-user-circle-dot.linked {
+  background: var(--as-accent-primary);
+}
+
+.proto-user-circle-dot.guest {
+  background: #f59e0b;
+}
+
+.proto-mobbin-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.proto-mobbin-avatar-lg {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(132, 204, 22, 0.16);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  font: 800 13px var(--as-font-mono);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.proto-mobbin-user-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.proto-mobbin-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.proto-mobbin-name-row strong {
+  font: 700 13.5px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+
+.proto-mobbin-user-meta small {
+  font: 500 10.5px var(--as-font-mono);
+  color: var(--as-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proto-mobbin-provider-tag {
+  padding: 2px 6px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  font: 600 9.5px var(--as-font-mono);
+  color: var(--as-text-secondary);
+}
+
+.proto-mobbin-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.proto-mobbin-stats-strip > div {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.proto-mobbin-stats-strip span {
+  font: 600 8.5px var(--as-font-mono);
+  color: var(--as-text-muted);
+  letter-spacing: 0.06em;
+}
+
+.proto-mobbin-stats-strip strong {
+  font: 700 11px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+
+/* Option C: Quick Profile Card Popover */
+.proto-discord-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(315px, 88vw);
+  padding: 0;
+  overflow: hidden;
+  background: rgba(14, 15, 19, 0.99);
+  border: 1px solid var(--as-border-strong);
+  border-radius: var(--as-radius-md);
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.88);
+  z-index: 90;
+  text-align: left;
+}
+
+.proto-discord-banner {
+  height: 54px;
+  padding: 10px 12px;
+  background: linear-gradient(125deg, rgba(132, 204, 22, 0.32), rgba(245, 158, 11, 0.24));
+  border-bottom: 1px solid var(--as-border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.proto-discord-body {
+  padding: 0 14px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.proto-discord-avatar-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: -22px;
+}
+
+.proto-discord-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #14161c;
+  border: 3px solid #0e0f13;
+  outline: 1.5px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  font: 800 15px var(--as-font-mono);
+  display: grid;
+  place-items: center;
+}
+
+.proto-discord-identity {
+  display: grid;
+  gap: 2px;
+}
+
+.proto-discord-identity strong {
+  font: 800 15px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+
+.proto-discord-identity small {
+  font: 500 10.5px var(--as-font-mono);
+  color: var(--as-text-muted);
+}
+
+.proto-discord-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.proto-acct-open-profile-btn {
+  padding: 9px 12px;
+  font: 700 11.5px var(--as-font-mono);
+}
+
+/* Option B: Full 2-Tab Account Settings Modal */
+.proto-acct-modal-backdrop {
+  z-index: 95;
+}
+
+.proto-chatgpt-modal {
+  width: min(680px, 100%);
+  padding: 0;
+  overflow: hidden;
+  background: rgba(14, 15, 19, 0.99);
+  border: 1px solid var(--as-border-strong);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.88);
+  display: grid;
+}
+
+.proto-chatgpt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+
+.proto-chatgpt-head h3 {
+  margin: 0;
+  font: 700 16px var(--as-font-mono);
+}
+
+.proto-chatgpt-body {
+  display: grid;
+  grid-template-columns: 195px 1fr;
+  min-height: 270px;
+}
+
+.proto-chatgpt-nav {
+  padding: 12px;
+  background: rgba(8, 9, 12, 0.7);
+  border-right: 1px solid var(--as-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proto-chatgpt-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--as-text-secondary);
+  font: 600 11.5px var(--as-font-mono);
+  cursor: pointer;
+  text-align: left;
+}
+
+.proto-chatgpt-tab:hover {
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+}
+
+.proto-chatgpt-tab.active {
+  background: rgba(132, 204, 22, 0.14);
+  border-color: var(--as-accent-primary);
+  color: var(--as-text-primary);
+}
+
+.proto-chatgpt-pane {
+  padding: 18px 20px;
+}
+
+.proto-chatgpt-section {
+  display: grid;
+  gap: 14px;
+}
+
+.proto-chatgpt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.proto-chatgpt-row.danger-box {
+  border-color: rgba(244, 63, 94, 0.45);
+  background: rgba(244, 63, 94, 0.06);
+}
+
+.proto-chatgpt-row strong {
+  display: block;
+  font: 700 12.5px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+
+.proto-chatgpt-row small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--as-text-secondary);
+  line-height: 1.4;
+}
+
+.proto-acct-close-x {
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-sm);
+  color: var(--as-text-secondary);
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+
+.proto-acct-btn-secondary {
+  padding: 8px 12px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.proto-acct-btn-secondary:hover {
+  border-color: var(--as-accent-primary);
+  color: var(--as-accent-primary);
+}
+
+.proto-acct-btn-secondary.full,
+.proto-acct-open-profile-btn.full,
+.proto-acct-btn-danger-outline.full,
+.proto-acct-btn-danger-solid.full {
+  width: 100%;
+  justify-content: center;
+}
+
+.proto-acct-btn-danger-outline {
+  padding: 7px 12px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid rgba(244, 63, 94, 0.65);
+  background: rgba(244, 63, 94, 0.12);
+  color: #fda4af;
+  font: 600 11px var(--as-font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.proto-acct-btn-danger-solid {
+  padding: 9px 14px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid #f43f5e;
+  background: #e11d48;
+  color: #fff;
+  font: 700 11.5px var(--as-font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.proto-acct-btn-danger-solid:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.proto-acct-danger-inline {
+  padding: 12px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid rgba(244, 63, 94, 0.6);
+  background: rgba(244, 63, 94, 0.1);
+  display: grid;
+  gap: 10px;
+}
+
+.proto-acct-danger-title {
+  font: 700 10px var(--as-font-mono);
+  color: #fda4af;
+  letter-spacing: 0.06em;
+}
+
+.proto-acct-danger-inline p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--as-text-secondary);
+}
+
+.proto-acct-danger-btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 8px;
+}
+
+.danger-text {
+  color: #fb7185 !important;
+}
+
+@media (max-width: 680px) {
+  .proto-chatgpt-body {
+    grid-template-columns: 1fr;
+  }
+
+  .proto-chatgpt-nav {
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 1px solid var(--as-border-subtle);
+  }
+}
+
 
 
 

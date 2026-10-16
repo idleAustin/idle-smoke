@@ -45,6 +45,8 @@ export interface SmokeBreakLobbyProps {
   onSelectRival: (rival: RivalOpponent) => void;
   onSetStep: (step: LobbyStep) => void;
   onStartShift: () => void;
+  statusBanner?: string | null;
+  onDismissBanner?: () => void;
 }
 
 export function resolveRivalList(entries: readonly LeaderboardEntry[]): RivalOpponent[] {
@@ -195,12 +197,16 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
 
 function LoginScreen({
   profile,
+  statusBanner,
+  onDismissBanner,
   onSaveCallsign,
   onLoginPassword,
   onLoginOAuth,
   onCompleteLogin,
 }: {
   profile: PlayerProfile;
+  statusBanner?: string | null;
+  onDismissBanner?: () => void;
   onSaveCallsign: (nextCallsign: string) => Promise<void>;
   onLoginPassword?: (callsign: string, password: string) => Promise<void>;
   onLoginOAuth?: (
@@ -362,6 +368,17 @@ function LoginScreen({
           <span>→</span>
           <span>4. SHIFT</span>
         </div>
+
+        {statusBanner && (
+          <div className="proto-acct-toast" role="status">
+            <span>{statusBanner}</span>
+            {onDismissBanner && (
+              <button type="button" className="proto-link-btn" onClick={onDismissBanner}>
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="proto-login-header">
           <span className="eyebrow">idleMullet Universal Account · Web &amp; iOS</span>
@@ -825,6 +842,8 @@ export function SmokeBreakLobby(props: SmokeBreakLobbyProps) {
     return (
       <LoginScreen
         profile={props.profile}
+        statusBanner={props.statusBanner}
+        onDismissBanner={props.onDismissBanner}
         onSaveCallsign={props.onSaveCallsign}
         onLoginPassword={props.onLoginPassword}
         onLoginOAuth={props.onLoginOAuth}

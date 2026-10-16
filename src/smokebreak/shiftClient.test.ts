@@ -3,11 +3,13 @@ import { handleApiRequest } from '../../server/shiftApi.js';
 import { createSqliteStore, openSqliteDb } from '../../server/sqliteDb.js';
 import {
   bootstrapPlayerSession,
+  deletePlayerAccount,
   flushPendingShifts,
   getCachedPlayerProfile,
   getPendingShifts,
   loginWithPassword,
   resetShiftClientStateForTests,
+  signOutPlayerSession,
   startShiftSession,
   submitFinishedShift,
   updatePlayerCallsign,
@@ -322,6 +324,47 @@ describe('shiftClient frontend progression & leaderboard client', () => {
       const reloaded = await bootstrapPlayerSession(fetchMock);
       expect(reloaded.profile.playerId).toBe(device1Boot.profile.playerId);
       expect(reloaded.profile.lifetimeSmoked).toBe(5);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('signs out of the current device via signOutPlayerSession (preserving cloud account) and permanently deletes the account via deletePlayerAccount', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    const store = createSqliteStore(db);
+    const fetchMock = createStoreFetch(store);
+
+    try {
+      await bootstrapPlayerSession(fetchMock);
+      const sixtyDrags = Array.from({ length: 60 }, (_, i) => i * 200);
+      await submitFinishedShift(
+        { environmentId: 'alleyway', pressOffsetsMs: sixtyDrags },
+        fetchMock
+      );
+      const linked = await loginWithPassword('ASH-KING', 'my-secret', fetchMock);
+      expect(linked.callsign).toBe('ASH-KING');
+      expect(linked.authProvider).toBe('password');
+      expect(linked.lifetimeSmoked).toBe(5);
+
+      // Sign out on this device -> creates a fresh guest identity while keeping ASH-KING intact in D1/SQLite
+      const signedOut = await signOutPlayerSession(fetchMock);
+      expect(signedOut.profile.playerId).not.toBe(linked.playerId);
+      expect(signedOut.profile.callsign).toMatch(/^SHIFT-\d{4}$/);
+      expect(signedOut.profile.lifetimeSmoked).toBe(0);
+      expect(signedOut.leaderboard.entries).toHaveLength(1);
+
+      // Log back into ASH-KING -> restores 5 butts and ASH-KING profile
+      const restored = await loginWithPassword('ASH-KING', 'my-secret', fetchMock);
+      expect(restored.playerId).toBe(linked.playerId);
+      expect(restored.lifetimeSmoked).toBe(5);
+
+      // Permanently delete ASH-KING -> purges cloud account & leaderboard shifts and boots a fresh guest
+      const deleted = await deletePlayerAccount(fetchMock);
+      expect(deleted.deletedCallsign).toBe('ASH-KING');
+      expect(deleted.profile.playerId).not.toBe(linked.playerId);
+      expect(deleted.profile.lifetimeSmoked).toBe(0);
+      expect(deleted.leaderboard.entries).toEqual([]);
     } finally {
       db.close();
     }

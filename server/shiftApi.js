@@ -143,6 +143,26 @@ export async function handleApiRequest(req, store, options = {}) {
     return { status: 200, body: formatPlayerProfile(playerRow) };
   }
 
+  if (route === '/api/v1/players/me' && method === 'DELETE') {
+    const playerRow = await authenticatePlayer(req.authHeader, store);
+    if (!playerRow) {
+      return { status: 401, body: { error: 'Valid Bearer playerToken required' } };
+    }
+    const playerId = String(playerRow.id);
+    const callsign = String(playerRow.callsign);
+    await store.deletePlayer(playerId);
+    const leaderboard = await store.getLeaderboard();
+    return {
+      status: 200,
+      body: {
+        deleted: true,
+        playerId,
+        callsign,
+        leaderboard,
+      },
+    };
+  }
+
   const parsedBody = parseJsonObjectBody(req.rawBody);
   if (!parsedBody.ok) {
     return { status: 400, body: { error: parsedBody.error } };
@@ -318,6 +338,7 @@ export async function handleApiRequest(req, store, options = {}) {
       secretHash,
       nowUnix,
     });
+    playerRow = (await store.getPlayerById(String(playerRow.id))) ?? playerRow;
 
     return {
       status: 200,
@@ -417,6 +438,7 @@ export async function handleApiRequest(req, store, options = {}) {
       email: oauthResult.email,
       nowUnix,
     });
+    playerRow = (await store.getPlayerById(String(playerRow.id))) ?? playerRow;
 
     return {
       status: 200,

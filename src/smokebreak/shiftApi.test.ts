@@ -821,5 +821,116 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       db.close();
     }
   });
+
+  it('permanently deletes a player account, linked player_auth identities, and shift_fact leaderboard rows via DELETE /api/v1/players/me', async () => {
+    const db = openSqliteDb(':memory:');
+    try {
+      const store = createSqliteStore(db);
+
+      // Register player, smoke 5 butts, and link password credential
+      const { body: created } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: JSON.stringify({ platform: 'web' }) },
+        store
+      );
+      const tokenA = String((created as Record<string, unknown>).playerToken);
+      const playerId = String((created as Record<string, unknown>).playerId);
+
+      await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            environmentId: 'alleyway',
+            pressOffsetsMs: makeOffsets(60, 100),
+          }),
+        },
+        store
+      );
+
+      const loginRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          authHeader: `Bearer ${tokenA}`,
+          rawBody: JSON.stringify({
+            callsign: 'ASH-KING',
+            password: 'delete-me-123',
+            platform: 'web',
+          }),
+        },
+        store
+      );
+      expect(loginRes.status).toBe(200);
+      expect((loginRes.body as Record<string, unknown>).authProvider).toBe('password');
+
+      // Second device logs in and gets a session token
+      const deviceB = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: 'ASH-KING',
+            password: 'delete-me-123',
+            platform: 'ios',
+          }),
+        },
+        store
+      );
+      const tokenB = String((deviceB.body as Record<string, unknown>).playerToken);
+
+      // Unauthenticated DELETE -> 401
+      const unauthDel = await handleApiRequest(
+        { method: 'DELETE', pathname: '/api/v1/players/me' },
+        store
+      );
+      expect(unauthDel.status).toBe(401);
+
+      // Authenticated DELETE -> 200 and purges player_dim, player_auth, and shift_fact
+      const delRes = await handleApiRequest(
+        {
+          method: 'DELETE',
+          pathname: '/api/v1/players/me',
+          authHeader: `Bearer ${tokenB}`,
+        },
+        store
+      );
+      expect(delRes.status).toBe(200);
+      expect(delRes.body).toMatchObject({
+        deleted: true,
+        playerId,
+        callsign: 'ASH-KING',
+      });
+      const lbAfter = (delRes.body as Record<string, unknown>).leaderboard as {
+        entries: unknown[];
+      };
+      expect(lbAfter.entries).toEqual([]);
+
+      // Both tokenA and tokenB are now invalid (401)
+      const meAAfter = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/players/me', authHeader: `Bearer ${tokenA}` },
+        store
+      );
+      const meBAfter = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/players/me', authHeader: `Bearer ${tokenB}` },
+        store
+      );
+      expect(meAAfter.status).toBe(401);
+      expect(meBAfter.status).toBe(401);
+
+      // Database tables have 0 rows for this player
+      expect(
+        db.prepare('SELECT COUNT(*) AS c FROM player_dim WHERE id = ?').get(playerId)
+      ).toEqual({ c: 0 });
+      expect(
+        db.prepare('SELECT COUNT(*) AS c FROM player_auth WHERE player_id = ?').get(playerId)
+      ).toEqual({ c: 0 });
+      expect(
+        db.prepare('SELECT COUNT(*) AS c FROM shift_fact WHERE player_id = ?').get(playerId)
+      ).toEqual({ c: 0 });
+    } finally {
+      db.close();
+    }
+  });
 });
 

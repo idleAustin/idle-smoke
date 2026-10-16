@@ -7,6 +7,8 @@ import {
   projectShiftProgression,
 } from './smokeBreak';
 
+export type AuthProviderId = 'apple' | 'google' | 'password' | 'guest';
+
 export interface PlayerProfile {
   playerId: string;
   callsign: string;
@@ -15,6 +17,8 @@ export interface PlayerProfile {
   bestSmoked: number;
   shiftsCompleted: number;
   unlockedEnvironments: EnvironmentId[];
+  authProvider?: AuthProviderId;
+  authEmail?: string;
 }
 
 export interface LeaderboardEntry {
@@ -167,6 +171,13 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
   const unlockedRaw = Array.isArray(raw.unlockedEnvironments)
     ? (raw.unlockedEnvironments as EnvironmentId[])
     : getUnlockedEnvironments(lifetimeSmoked);
+  const providerRaw = raw.authProvider;
+  const authProvider: AuthProviderId | undefined =
+    providerRaw === 'apple' || providerRaw === 'google' || providerRaw === 'password'
+      ? providerRaw
+      : undefined;
+  const authEmail =
+    typeof raw.authEmail === 'string' && raw.authEmail.length > 0 ? raw.authEmail : undefined;
   return {
     playerId: String(raw.playerId ?? DEFAULT_PROFILE.playerId),
     callsign: String(raw.callsign ?? DEFAULT_PROFILE.callsign),
@@ -175,6 +186,8 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
     bestSmoked: Number(raw.bestSmoked ?? 0),
     shiftsCompleted: Number(raw.shiftsCompleted ?? 0),
     unlockedEnvironments: unlockedRaw.length > 0 ? unlockedRaw : ['alleyway'],
+    ...(authProvider ? { authProvider } : {}),
+    ...(authEmail ? { authEmail } : {}),
   };
 }
 
@@ -681,6 +694,65 @@ export async function loginWithOAuth(
   const updated = normalizeProfile({ ...currentProfile, ...data });
   setCachedProfile(updated);
   return updated;
+}
+
+export async function signOutPlayerSession(
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{
+  previousCallsign: string;
+  profile: PlayerProfile;
+  leaderboard: LeaderboardResponse;
+}> {
+  await hydrateNativeStorage();
+  const previousCallsign = getCachedPlayerProfile().callsign;
+  clearStoredToken();
+  memoryProfile = null;
+  memoryPendingShifts = [];
+  platformStorage.removeSync(PROFILE_STORAGE_KEY);
+  platformStorage.removeSync(PENDING_SHIFTS_STORAGE_KEY);
+
+  const { profile, leaderboard } = await bootstrapPlayerSession(fetchImpl);
+  return { previousCallsign, profile, leaderboard };
+}
+
+export async function deletePlayerAccount(
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{
+  deletedCallsign: string;
+  profile: PlayerProfile;
+  leaderboard: LeaderboardResponse;
+}> {
+  const { token, profile: currentProfile } = await ensureAuthenticatedPlayer(fetchImpl);
+  if (!token) {
+    throw new Error('Player session is not authenticated');
+  }
+
+  const res = await fetchImpl(resolveApiPath('/api/v1/players/me'), {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to delete account');
+  }
+
+  const deletedCallsign =
+    typeof data.callsign === 'string' ? data.callsign : currentProfile.callsign;
+  if (data.leaderboard) {
+    memoryLeaderboard = data.leaderboard as LeaderboardResponse;
+  }
+
+  clearStoredToken();
+  memoryProfile = null;
+  memoryPendingShifts = [];
+  platformStorage.removeSync(PROFILE_STORAGE_KEY);
+  platformStorage.removeSync(PENDING_SHIFTS_STORAGE_KEY);
+
+  const { profile, leaderboard } = await bootstrapPlayerSession(fetchImpl);
+  return { deletedCallsign, profile, leaderboard };
 }
 
 export async function startShiftSession(

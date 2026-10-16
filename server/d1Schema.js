@@ -99,6 +99,16 @@ export function createD1Store(d1) {
       return (await d1.prepare(API_SQL.selectPlayerById).bind(playerId).first()) ?? null;
     },
     /**
+     * @param {string} playerId
+     */
+    async deletePlayer(playerId) {
+      await d1.batch([
+        d1.prepare(API_SQL.deletePlayerShifts).bind(playerId),
+        d1.prepare(API_SQL.deletePlayerAuth).bind(playerId),
+        d1.prepare(API_SQL.deletePlayerDim).bind(playerId),
+      ]);
+    },
+    /**
      * @param {{ shiftId: string, playerId: string, environmentId: string, platform: string, nowUnix: number }} params
      */
     async createStartedShift({ shiftId, playerId, environmentId, platform, nowUnix }) {

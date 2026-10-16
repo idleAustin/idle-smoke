@@ -154,6 +154,21 @@ export function createSqliteStore(db) {
       return db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null;
     },
     /**
+     * @param {string} playerId
+     */
+    async deletePlayer(playerId) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(API_SQL.deletePlayerShifts).run(playerId);
+        db.prepare(API_SQL.deletePlayerAuth).run(playerId);
+        db.prepare(API_SQL.deletePlayerDim).run(playerId);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+    },
+    /**
      * @param {{ shiftId: string, playerId: string, environmentId: string, platform: string, nowUnix: number }} params
      */
     async createStartedShift({ shiftId, playerId, environmentId, platform, nowUnix }) {
