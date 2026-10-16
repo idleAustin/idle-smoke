@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState, type PointerEvent } from 'reac
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
   bootstrapPlayerSession,
+  flushPendingShifts,
   getCachedLeaderboard,
   getCachedPlayerProfile,
   resolveShiftEnvironment,
@@ -84,12 +85,25 @@ export function SmokeBreakGame({
       setProfile(loadedProfile);
       setLeaderboard(loadedBoard);
     });
-    return () => { active = false; };
+    const onOnline = () => {
+      flushPendingShifts().then(({ profile: syncedProfile, leaderboard: syncedBoard }) => {
+        if (!active) return;
+        setProfile(syncedProfile);
+        setLeaderboard(syncedBoard);
+      });
+    };
+    window.addEventListener('online', onOnline);
+    return () => {
+      active = false;
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
+  const startedAtUnixRef = useRef<number | null>(null);
   const startedShiftPromiseRef = useRef<Promise<StartedShiftSession | null> | null>(null);
   useEffect(() => {
     if (state.startedAt === undefined || startedShiftPromiseRef.current !== null) return;
+    startedAtUnixRef.current = Math.floor(Date.now() / 1000);
     startedShiftPromiseRef.current = startShiftSession({ environmentId: env.id });
   }, [state.startedAt, env.id]);
 
@@ -104,6 +118,7 @@ export function SmokeBreakGame({
         shiftId: startedShift?.shiftId,
         environmentId: startedShift?.environmentId ?? env.id,
         pressOffsetsMs,
+        startedAt: startedShift?.startedAt ?? startedAtUnixRef.current ?? Math.floor(Date.now() / 1000),
       });
       if (!active) return;
       setShiftResult(result);
@@ -164,13 +179,16 @@ export function SmokeBreakGame({
     profile.unlockedEnvironments,
     done ? state.smoked : 0
   );
-  const reportSmoked = shiftResult?.verified ? shiftResult.smoked : state.smoked;
-  const reportLifetimeSmoked = shiftResult?.verified ? shiftResult.profile.lifetimeSmoked : projected.lifetimeSmoked;
-  const reportBestSmoked = shiftResult?.verified ? shiftResult.profile.bestSmoked : projected.bestSmoked;
-  const reportUnlockedEnvironments = shiftResult?.verified
+  const hasResolvedShift = shiftResult !== null;
+  const reportSmoked = hasResolvedShift ? shiftResult.smoked : state.smoked;
+  const reportLifetimeSmoked = hasResolvedShift
+    ? shiftResult.profile.lifetimeSmoked
+    : projected.lifetimeSmoked;
+  const reportBestSmoked = hasResolvedShift ? shiftResult.profile.bestSmoked : projected.bestSmoked;
+  const reportUnlockedEnvironments = hasResolvedShift
     ? shiftResult.profile.unlockedEnvironments
     : projected.unlockedEnvironments;
-  const reportNewlyUnlocked = shiftResult?.verified
+  const reportNewlyUnlocked = hasResolvedShift
     ? shiftResult.newlyUnlockedEnvironments
     : projected.newlyUnlockedEnvironments;
   const verifiedEnv = getEnvironment(resolveShiftEnvironment(env.id, profile.unlockedEnvironments));
@@ -261,3 +279,4 @@ export function SmokeBreakGame({
     </section>
   </main>;
 }
+

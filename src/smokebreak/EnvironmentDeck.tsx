@@ -25,7 +25,16 @@ export interface SmokeEnvironment {
   lighting: EnvironmentLighting;
 }
 
-const BASE_URL = import.meta.env.BASE_URL;
+export function resolveEnvironmentImagePath(
+  assetPath: string,
+  baseUrl: string = import.meta.env.BASE_URL
+): string {
+  const cleanAsset = assetPath.replace(/^\/+/, '');
+  const trimmedBase = baseUrl.trim();
+  const normalizedBase =
+    trimmedBase === '' ? '/' : trimmedBase.endsWith('/') ? trimmedBase : `${trimmedBase}/`;
+  return `${normalizedBase}${cleanAsset}`;
+}
 
 export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
   {
@@ -37,7 +46,7 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '46°F · Light Drizzle',
     risk: 'LOW SUPERVISION',
     riskTone: 'success',
-    image: `${BASE_URL}environments/alleyway.jpg`,
+    image: resolveEnvironmentImagePath('environments/alleyway.jpg'),
     unlockSmokedRequired: UNLOCK_THRESHOLDS.alleyway,
     lighting: {
       sky: 0x8fb8a8,
@@ -56,7 +65,7 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '52°F · Kitchen Steam',
     risk: 'CHEF ON LINE',
     riskTone: 'warning',
-    image: `${BASE_URL}environments/restaurant.jpg`,
+    image: resolveEnvironmentImagePath('environments/restaurant.jpg'),
     unlockSmokedRequired: UNLOCK_THRESHOLDS.restaurant,
     lighting: {
       sky: 0xa6c8d8,
@@ -75,7 +84,7 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '58°F · Stale Draft',
     risk: 'BLIND CAMERA',
     riskTone: 'success',
-    image: `${BASE_URL}environments/parking-garage.jpg`,
+    image: resolveEnvironmentImagePath('environments/parking-garage.jpg'),
     unlockSmokedRequired: UNLOCK_THRESHOLDS['parking-garage'],
     lighting: {
       sky: 0xb8f2d0,
@@ -94,7 +103,7 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '44°F · Night Mist',
     risk: 'SHIFT LEAD NEARBY',
     riskTone: 'error',
-    image: `${BASE_URL}environments/dumpster.jpg`,
+    image: resolveEnvironmentImagePath('environments/dumpster.jpg'),
     unlockSmokedRequired: UNLOCK_THRESHOLDS.dumpster,
     lighting: {
       sky: 0x9ab0c7,

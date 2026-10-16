@@ -159,6 +159,24 @@ export function hasTamperedScoreFields(body) {
 }
 
 /**
+ * Normalizes a Unix epoch timestamp (seconds or milliseconds) into positive Unix seconds.
+ * @param {unknown} rawStartedAt
+ * @param {number} [fallbackUnix]
+ * @returns {{ ok: true, startedAt: number } | { ok: false, error: string }}
+ */
+export function normalizeStartedAtUnix(rawStartedAt, fallbackUnix = Math.floor(Date.now() / 1000)) {
+  if (rawStartedAt === undefined || rawStartedAt === null) {
+    return { ok: true, startedAt: fallbackUnix };
+  }
+  const num = Number(rawStartedAt);
+  if (!Number.isFinite(num) || num <= 0) {
+    return { ok: false, error: 'Invalid startedAt timestamp' };
+  }
+  const seconds = num > 10_000_000_000 ? Math.floor(num / 1000) : Math.floor(num);
+  return { ok: true, startedAt: Math.min(fallbackUnix, Math.max(1, seconds)) };
+}
+
+/**
  * Replays pressOffsetsMs through the deterministic press() reducer and enforces anti-cheat bounds.
  * @param {unknown} pressOffsetsMs
  * @returns {{ ok: true, smoked: number, progress: number, tapCount: number, durationMs: number } | { ok: false, error: string }}

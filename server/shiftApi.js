@@ -8,6 +8,7 @@ import {
   hashPlayerToken,
   isValidEnvironmentId,
   normalizePlatform,
+  normalizeStartedAtUnix,
   validateCallsign,
   verifyShiftReplay,
 } from './shiftVerifier.js';
@@ -254,6 +255,16 @@ export async function handleApiRequest(req, store, options = {}) {
     let shiftId = globalThis.crypto.randomUUID();
     let hasExistingStartedRow = false;
     let startedAt = nowUnix;
+    let hasClientStartedAt = false;
+
+    if (body.startedAt !== undefined) {
+      const startedAtResult = normalizeStartedAtUnix(body.startedAt, nowUnix);
+      if (!startedAtResult.ok) {
+        return { status: 400, body: { error: startedAtResult.error } };
+      }
+      startedAt = startedAtResult.startedAt;
+      hasClientStartedAt = true;
+    }
 
     if (body.shiftId !== undefined) {
       if (typeof body.shiftId !== 'string' || body.shiftId.trim().length === 0 || body.shiftId.length > 64) {
@@ -262,36 +273,39 @@ export async function handleApiRequest(req, store, options = {}) {
       shiftId = body.shiftId.trim();
       const existingShift = await store.getShiftById(shiftId);
       if (!existingShift) {
-        return { status: 400, body: { error: 'Unknown shiftId: shift was not started' } };
+        if (!hasClientStartedAt) {
+          return { status: 400, body: { error: 'Unknown shiftId: shift was not started' } };
+        }
+      } else {
+        if (String(existingShift.player_id) !== String(playerRow.id)) {
+          return { status: 400, body: { error: 'shiftId belongs to another player' } };
+        }
+        if (String(existingShift.environment_id) !== environmentId) {
+          return { status: 400, body: { error: 'environmentId does not match started shift' } };
+        }
+        if (existingShift.status === 'rejected') {
+          return { status: 400, body: { error: 'Shift was already rejected' } };
+        }
+        if (existingShift.status === 'verified') {
+          const leaderboard = await store.getLeaderboard();
+          return {
+            status: 200,
+            body: {
+              shiftId,
+              verified: true,
+              smoked: Number(existingShift.smoked),
+              progress: 0,
+              tapCount: Number(existingShift.tap_count),
+              durationMs: Number(existingShift.duration_ms),
+              newlyUnlockedEnvironments: [],
+              profile: formatPlayerProfile(playerRow),
+              leaderboard,
+            },
+          };
+        }
+        hasExistingStartedRow = true;
+        startedAt = Number(existingShift.started_at ?? startedAt);
       }
-      if (String(existingShift.player_id) !== String(playerRow.id)) {
-        return { status: 400, body: { error: 'shiftId belongs to another player' } };
-      }
-      if (String(existingShift.environment_id) !== environmentId) {
-        return { status: 400, body: { error: 'environmentId does not match started shift' } };
-      }
-      if (existingShift.status === 'rejected') {
-        return { status: 400, body: { error: 'Shift was already rejected' } };
-      }
-      if (existingShift.status === 'verified') {
-        const leaderboard = await store.getLeaderboard();
-        return {
-          status: 200,
-          body: {
-            shiftId,
-            verified: true,
-            smoked: Number(existingShift.smoked),
-            progress: 0,
-            tapCount: Number(existingShift.tap_count),
-            durationMs: Number(existingShift.duration_ms),
-            newlyUnlockedEnvironments: [],
-            profile: formatPlayerProfile(playerRow),
-            leaderboard,
-          },
-        };
-      }
-      hasExistingStartedRow = true;
-      startedAt = Number(existingShift.started_at ?? nowUnix);
     }
 
     const replay = verifyShiftReplay(body.pressOffsetsMs);

@@ -1,4 +1,9 @@
-import { type EnvironmentId, getUnlockedEnvironments } from './smokeBreak';
+import { normalizeStartedAtUnix, verifyShiftReplay } from '../../server/shiftVerifier.js';
+import {
+  type EnvironmentId,
+  getUnlockedEnvironments,
+  projectShiftProgression,
+} from './smokeBreak';
 
 type PlatformId = 'web' | 'ios' | 'android';
 
@@ -35,9 +40,17 @@ export interface StartedShiftSession {
   startedAt: number;
 }
 
+export interface PendingShift {
+  shiftId: string;
+  environmentId: EnvironmentId;
+  pressOffsetsMs: number[];
+  startedAt: number;
+}
+
 export interface ShiftFinishResult {
   shiftId: string;
   verified: boolean;
+  queued: boolean;
   smoked: number;
   progress: number;
   tapCount: number;
@@ -49,6 +62,7 @@ export interface ShiftFinishResult {
 
 const TOKEN_STORAGE_KEY = 'smokebreak.playerToken';
 const PROFILE_STORAGE_KEY = 'smokebreak.playerProfile';
+const PENDING_SHIFTS_STORAGE_KEY = 'smokebreak.pendingShifts';
 
 const DEFAULT_PROFILE: PlayerProfile = {
   playerId: 'local-preview',
@@ -68,6 +82,13 @@ const EMPTY_LEADERBOARD: LeaderboardResponse = {
 let memoryToken: string | null = null;
 let memoryProfile: PlayerProfile | null = null;
 let memoryLeaderboard: LeaderboardResponse = EMPTY_LEADERBOARD;
+let memoryPendingShifts: PendingShift[] | null = null;
+let activeFlushPromise: Promise<{
+  flushedCount: number;
+  remainingCount: number;
+  profile: PlayerProfile;
+  leaderboard: LeaderboardResponse;
+}> | null = null;
 
 function readStorageItem(key: string): string | null {
   try {
@@ -115,6 +136,11 @@ function setStoredToken(token: string): void {
   writeStorageItem(TOKEN_STORAGE_KEY, token);
 }
 
+function clearStoredToken(): void {
+  memoryToken = null;
+  removeStorageItem(TOKEN_STORAGE_KEY);
+}
+
 function normalizePlatformId(value: unknown): PlatformId {
   return value === 'ios' || value === 'android' ? value : 'web';
 }
@@ -138,6 +164,149 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
 function setCachedProfile(profile: PlayerProfile): void {
   memoryProfile = profile;
   writeStorageItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+}
+
+function resolveStartedAtUnix(value: unknown): number {
+  const result = normalizeStartedAtUnix(value);
+  return result.ok ? result.startedAt : Math.floor(Date.now() / 1000);
+}
+
+function readPendingShiftsFromStorage(): PendingShift[] {
+  if (memoryPendingShifts !== null) {
+    return memoryPendingShifts;
+  }
+  const raw = readStorageItem(PENDING_SHIFTS_STORAGE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const valid: PendingShift[] = [];
+        for (const entry of parsed) {
+          if (typeof entry !== 'object' || entry === null) continue;
+          const record = entry as Record<string, unknown>;
+          if (typeof record.shiftId !== 'string' || !Array.isArray(record.pressOffsetsMs)) continue;
+          valid.push({
+            shiftId: record.shiftId,
+            environmentId: (record.environmentId as EnvironmentId) ?? 'alleyway',
+            pressOffsetsMs: record.pressOffsetsMs.map(n => Number(n)),
+            startedAt: resolveStartedAtUnix(record.startedAt),
+          });
+        }
+        memoryPendingShifts = valid;
+        return valid;
+      }
+    } catch {
+      // Ignore corrupt pending queue JSON
+    }
+  }
+  memoryPendingShifts = [];
+  return memoryPendingShifts;
+}
+
+function writePendingShiftsToStorage(queue: PendingShift[]): void {
+  memoryPendingShifts = queue;
+  writeStorageItem(PENDING_SHIFTS_STORAGE_KEY, JSON.stringify(queue));
+}
+
+export function getPendingShifts(): PendingShift[] {
+  return readPendingShiftsFromStorage().map(item => ({
+    ...item,
+    pressOffsetsMs: [...item.pressOffsetsMs],
+  }));
+}
+
+function createRejectedShiftResult(
+  shiftId: string,
+  tapCount: number,
+  profile: PlayerProfile
+): ShiftFinishResult {
+  return {
+    shiftId,
+    verified: false,
+    queued: false,
+    smoked: 0,
+    progress: 0,
+    tapCount,
+    durationMs: 0,
+    newlyUnlockedEnvironments: [],
+    profile,
+    leaderboard: memoryLeaderboard,
+  };
+}
+
+function enqueueOfflineShift(params: {
+  shiftId: string;
+  requestedEnvironmentId: EnvironmentId;
+  pressOffsetsMs: readonly number[];
+  startedAt: number;
+  baseProfile: PlayerProfile;
+}): ShiftFinishResult {
+  const replay = verifyShiftReplay(params.pressOffsetsMs);
+  if (!replay.ok) {
+    return createRejectedShiftResult(
+      params.shiftId,
+      params.pressOffsetsMs.length,
+      params.baseProfile
+    );
+  }
+
+  const effectiveEnvironmentId = resolveShiftEnvironment(
+    params.requestedEnvironmentId,
+    params.baseProfile.unlockedEnvironments
+  );
+  const queue = readPendingShiftsFromStorage();
+  const alreadyQueued = queue.some(item => item.shiftId === params.shiftId);
+
+  if (alreadyQueued) {
+    return {
+      shiftId: params.shiftId,
+      verified: false,
+      queued: true,
+      smoked: replay.smoked,
+      progress: replay.progress,
+      tapCount: replay.tapCount,
+      durationMs: replay.durationMs,
+      newlyUnlockedEnvironments: [],
+      profile: getCachedPlayerProfile(),
+      leaderboard: memoryLeaderboard,
+    };
+  }
+
+  const nextEntry: PendingShift = {
+    shiftId: params.shiftId,
+    environmentId: effectiveEnvironmentId,
+    pressOffsetsMs: [...params.pressOffsetsMs],
+    startedAt: params.startedAt,
+  };
+  writePendingShiftsToStorage([...queue, nextEntry]);
+
+  const projected = projectShiftProgression(
+    params.baseProfile.lifetimeSmoked,
+    params.baseProfile.bestSmoked,
+    params.baseProfile.unlockedEnvironments,
+    replay.smoked
+  );
+  const optimisticProfile: PlayerProfile = {
+    ...params.baseProfile,
+    lifetimeSmoked: projected.lifetimeSmoked,
+    bestSmoked: projected.bestSmoked,
+    shiftsCompleted: params.baseProfile.shiftsCompleted + 1,
+    unlockedEnvironments: projected.unlockedEnvironments,
+  };
+  setCachedProfile(optimisticProfile);
+
+  return {
+    shiftId: params.shiftId,
+    verified: false,
+    queued: true,
+    smoked: replay.smoked,
+    progress: replay.progress,
+    tapCount: replay.tapCount,
+    durationMs: replay.durationMs,
+    newlyUnlockedEnvironments: projected.newlyUnlockedEnvironments,
+    profile: optimisticProfile,
+    leaderboard: memoryLeaderboard,
+  };
 }
 
 export function resolveShiftEnvironment(
@@ -170,8 +339,11 @@ export function resetShiftClientStateForTests(): void {
   memoryToken = null;
   memoryProfile = null;
   memoryLeaderboard = EMPTY_LEADERBOARD;
+  memoryPendingShifts = null;
+  activeFlushPromise = null;
   removeStorageItem(TOKEN_STORAGE_KEY);
   removeStorageItem(PROFILE_STORAGE_KEY);
+  removeStorageItem(PENDING_SHIFTS_STORAGE_KEY);
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -190,9 +362,17 @@ async function fetchLeaderboard(fetchImpl: FetchLike): Promise<LeaderboardRespon
   return memoryLeaderboard;
 }
 
-async function ensureAuthenticatedPlayer(fetchImpl: FetchLike): Promise<{ token: string | null; profile: PlayerProfile }> {
+async function ensureAuthenticatedPlayer(
+  fetchImpl: FetchLike,
+  options: { preserveOptimisticIfPending?: boolean } = {}
+): Promise<{ token: string | null; profile: PlayerProfile; reachable: boolean }> {
   const existingToken = getStoredToken();
+  const hasPending = readPendingShiftsFromStorage().length > 0;
+
   if (existingToken) {
+    if (options.preserveOptimisticIfPending && hasPending) {
+      return { token: existingToken, profile: getCachedPlayerProfile(), reachable: true };
+    }
     try {
       const meRes = await fetchImpl('/api/v1/players/me', {
         method: 'GET',
@@ -201,11 +381,22 @@ async function ensureAuthenticatedPlayer(fetchImpl: FetchLike): Promise<{ token:
       if (meRes.ok) {
         const raw = (await meRes.json()) as Record<string, unknown>;
         const profile = normalizeProfile(raw);
-        setCachedProfile(profile);
-        return { token: existingToken, profile };
+        if (!hasPending) {
+          setCachedProfile(profile);
+        }
+        return {
+          token: existingToken,
+          profile: hasPending ? getCachedPlayerProfile() : profile,
+          reachable: true,
+        };
+      }
+      if (meRes.status === 401) {
+        clearStoredToken();
+      } else if (meRes.status >= 500 || meRes.status === 429) {
+        return { token: existingToken, profile: getCachedPlayerProfile(), reachable: false };
       }
     } catch {
-      return { token: existingToken, profile: getCachedPlayerProfile() };
+      return { token: existingToken, profile: getCachedPlayerProfile(), reachable: false };
     }
   }
 
@@ -217,22 +408,153 @@ async function ensureAuthenticatedPlayer(fetchImpl: FetchLike): Promise<{ token:
     });
     if (createRes.ok) {
       const raw = (await createRes.json()) as Record<string, unknown>;
-      const token = typeof raw.playerToken === 'string' ? raw.playerToken : existingToken;
+      const token = typeof raw.playerToken === 'string' ? raw.playerToken : getStoredToken();
       if (token) setStoredToken(token);
       const profile = normalizeProfile(raw);
-      setCachedProfile(profile);
-      return { token: token ?? null, profile };
+      if (!hasPending) {
+        setCachedProfile(profile);
+      }
+      return {
+        token: token ?? null,
+        profile: hasPending ? getCachedPlayerProfile() : profile,
+        reachable: true,
+      };
     }
   } catch {
     // Fallback to cached/default profile when unreachable
   }
 
-  return { token: existingToken, profile: getCachedPlayerProfile() };
+  return { token: getStoredToken(), profile: getCachedPlayerProfile(), reachable: false };
+}
+
+export async function flushPendingShifts(
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{
+  flushedCount: number;
+  remainingCount: number;
+  profile: PlayerProfile;
+  leaderboard: LeaderboardResponse;
+}> {
+  if (activeFlushPromise) {
+    return activeFlushPromise;
+  }
+
+  activeFlushPromise = (async () => {
+    const queue = [...readPendingShiftsFromStorage()];
+    if (queue.length === 0) {
+      return {
+        flushedCount: 0,
+        remainingCount: 0,
+        profile: getCachedPlayerProfile(),
+        leaderboard: memoryLeaderboard,
+      };
+    }
+
+    let auth = await ensureAuthenticatedPlayer(fetchImpl, { preserveOptimisticIfPending: true });
+    if (!auth.token || !auth.reachable) {
+      return {
+        flushedCount: 0,
+        remainingCount: queue.length,
+        profile: getCachedPlayerProfile(),
+        leaderboard: memoryLeaderboard,
+      };
+    }
+
+    let flushedCount = 0;
+    let droppedCount = 0;
+    let latestProfile = auth.profile;
+
+    while (queue.length > 0) {
+      const item = queue[0];
+      try {
+        const res = await fetchImpl('/api/v1/shifts/finish', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shiftId: item.shiftId,
+            environmentId: item.environmentId,
+            pressOffsetsMs: item.pressOffsetsMs,
+            startedAt: item.startedAt,
+            platform: latestProfile.platform,
+          }),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as Record<string, unknown>;
+          latestProfile = normalizeProfile(
+            (data.profile as Record<string, unknown>) ?? latestProfile
+          );
+          if (data.leaderboard) {
+            memoryLeaderboard = data.leaderboard as LeaderboardResponse;
+          }
+          queue.shift();
+          writePendingShiftsToStorage(queue);
+          if (queue.length === 0) {
+            setCachedProfile(latestProfile);
+          }
+          flushedCount += 1;
+          continue;
+        }
+
+        if (res.status === 401) {
+          clearStoredToken();
+          auth = await ensureAuthenticatedPlayer(fetchImpl, { preserveOptimisticIfPending: true });
+          if (!auth.token || !auth.reachable) {
+            break;
+          }
+          continue;
+        }
+
+        if (res.status === 400) {
+          // Drop permanently invalid shift payload so it cannot block subsequent shifts
+          queue.shift();
+          writePendingShiftsToStorage(queue);
+          droppedCount += 1;
+          continue;
+        }
+
+        // 429 rate-limit or 5xx server error: preserve queue and retry later
+        break;
+      } catch {
+        // Network error mid-flush: keep remaining items in FIFO order
+        break;
+      }
+    }
+
+    if (queue.length === 0) {
+      if (droppedCount > 0 && flushedCount === 0) {
+        const reconciled = await ensureAuthenticatedPlayer(fetchImpl);
+        latestProfile = reconciled.profile;
+      }
+      setCachedProfile(latestProfile);
+    }
+
+    return {
+      flushedCount,
+      remainingCount: queue.length,
+      profile: getCachedPlayerProfile(),
+      leaderboard: memoryLeaderboard,
+    };
+  })().finally(() => {
+    activeFlushPromise = null;
+  });
+
+  return activeFlushPromise;
 }
 
 export async function bootstrapPlayerSession(
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<{ profile: PlayerProfile; leaderboard: LeaderboardResponse }> {
+  if (readPendingShiftsFromStorage().length > 0) {
+    const flushed = await flushPendingShifts(fetchImpl);
+    if (flushed.remainingCount > 0) {
+      return { profile: flushed.profile, leaderboard: flushed.leaderboard };
+    }
+  }
+
   const [{ profile }, leaderboard] = await Promise.all([
     ensureAuthenticatedPlayer(fetchImpl),
     fetchLeaderboard(fetchImpl),
@@ -272,8 +594,15 @@ export async function startShiftSession(
   params: { environmentId: EnvironmentId },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<StartedShiftSession | null> {
-  const { token, profile } = await ensureAuthenticatedPlayer(fetchImpl);
-  if (!token) return null;
+  if (readPendingShiftsFromStorage().length > 0) {
+    const flushed = await flushPendingShifts(fetchImpl);
+    if (flushed.remainingCount > 0) {
+      return null;
+    }
+  }
+
+  const { token, profile, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
+  if (!token || !reachable) return null;
 
   const effectiveEnvironmentId = resolveShiftEnvironment(
     params.environmentId,
@@ -309,14 +638,63 @@ export async function startShiftSession(
 }
 
 export async function submitFinishedShift(
-  params: { shiftId?: string; environmentId: EnvironmentId; pressOffsetsMs: readonly number[] },
+  params: {
+    shiftId?: string;
+    environmentId: EnvironmentId;
+    pressOffsetsMs: readonly number[];
+    startedAt?: number;
+  },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<ShiftFinishResult> {
-  const { token, profile: currentProfile } = await ensureAuthenticatedPlayer(fetchImpl);
+  const shiftId = params.shiftId ?? globalThis.crypto.randomUUID();
+  const startedAt = resolveStartedAtUnix(params.startedAt);
+
+  // Deduplicate if this exact shiftId is already in the local pending queue
+  if (readPendingShiftsFromStorage().some(item => item.shiftId === shiftId)) {
+    const flushed = await flushPendingShifts(fetchImpl);
+    if (flushed.remainingCount === 0) {
+      const replay = verifyShiftReplay(params.pressOffsetsMs);
+      return {
+        shiftId,
+        verified: replay.ok,
+        queued: false,
+        smoked: replay.ok ? replay.smoked : 0,
+        progress: replay.ok ? replay.progress : 0,
+        tapCount: replay.ok ? replay.tapCount : params.pressOffsetsMs.length,
+        durationMs: replay.ok ? replay.durationMs : 0,
+        newlyUnlockedEnvironments: [],
+        profile: flushed.profile,
+        leaderboard: flushed.leaderboard,
+      };
+    }
+    return enqueueOfflineShift({
+      shiftId,
+      requestedEnvironmentId: params.environmentId,
+      pressOffsetsMs: params.pressOffsetsMs,
+      startedAt,
+      baseProfile: getCachedPlayerProfile(),
+    });
+  }
+
+  // Replay any previously queued offline shifts in FIFO order before submitting the current shift
+  if (readPendingShiftsFromStorage().length > 0) {
+    const flushed = await flushPendingShifts(fetchImpl);
+    if (flushed.remainingCount > 0) {
+      return enqueueOfflineShift({
+        shiftId,
+        requestedEnvironmentId: params.environmentId,
+        pressOffsetsMs: params.pressOffsetsMs,
+        startedAt,
+        baseProfile: getCachedPlayerProfile(),
+      });
+    }
+  }
+
+  const { token, profile: currentProfile, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
   const unlockedBefore = currentProfile.unlockedEnvironments;
   const effectiveEnvironmentId = resolveShiftEnvironment(params.environmentId, unlockedBefore);
 
-  if (token) {
+  if (token && reachable) {
     try {
       const payload: Record<string, unknown> = {
         environmentId: effectiveEnvironmentId,
@@ -325,6 +703,9 @@ export async function submitFinishedShift(
       };
       if (params.shiftId) {
         payload.shiftId = params.shiftId;
+      }
+      if (params.startedAt !== undefined) {
+        payload.startedAt = startedAt;
       }
 
       const res = await fetchImpl('/api/v1/shifts/finish', {
@@ -349,8 +730,9 @@ export async function submitFinishedShift(
           : updatedProfile.unlockedEnvironments.filter(id => !unlockedBefore.includes(id));
 
         return {
-          shiftId: String(data.shiftId ?? params.shiftId ?? 'verified-shift'),
+          shiftId: String(data.shiftId ?? shiftId),
           verified: Boolean(data.verified ?? true),
+          queued: false,
           smoked: Number(data.smoked ?? 0),
           progress: Number(data.progress ?? 0),
           tapCount: Number(data.tapCount ?? params.pressOffsetsMs.length),
@@ -360,20 +742,20 @@ export async function submitFinishedShift(
           leaderboard,
         };
       }
+
+      if (res.status === 400) {
+        return createRejectedShiftResult(shiftId, params.pressOffsetsMs.length, currentProfile);
+      }
     } catch {
-      // Unreachable network handled in Ticket 04 offline queue
+      // Fall through to offline queue persistence below
     }
   }
 
-  return {
-    shiftId: params.shiftId ?? 'unverified-shift',
-    verified: false,
-    smoked: 0,
-    progress: 0,
-    tapCount: params.pressOffsetsMs.length,
-    durationMs: 0,
-    newlyUnlockedEnvironments: [],
-    profile: currentProfile,
-    leaderboard: memoryLeaderboard,
-  };
+  return enqueueOfflineShift({
+    shiftId,
+    requestedEnvironmentId: params.environmentId,
+    pressOffsetsMs: params.pressOffsetsMs,
+    startedAt,
+    baseProfile: currentProfile,
+  });
 }
