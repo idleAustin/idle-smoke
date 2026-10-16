@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "idle-smoke-break-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "8b2be842-3a52-4b47-8044-d0e3a2a8014d"
     }
   ],
   "routes": [
@@ -37,7 +37,7 @@
         {
           "binding": "DB",
           "database_name": "idle-smoke-break-db",
-          "database_id": "00000000-0000-0000-0000-000000000000"
+          "database_id": "8b2be842-3a52-4b47-8044-d0e3a2a8014d"
         }
       ]
     }

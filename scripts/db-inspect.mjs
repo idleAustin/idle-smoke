@@ -12,7 +12,7 @@ if (args.has('--d1-init')) {
   const locationFlag = args.has('--remote') ? '--remote' : '--local';
   execFileSync(
     'npx',
-    ['wrangler', 'd1', 'execute', 'idle-smoke-break-db', locationFlag, '--file=server/schema.sql'],
+    ['wrangler', 'd1', 'execute', 'idle-smoke-break-db', locationFlag, '--yes', '--file=server/schema.sql'],
     { stdio: 'inherit' }
   );
   process.exit(0);
