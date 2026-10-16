@@ -680,6 +680,26 @@ kbd {
   color: var(--as-text-secondary);
   border: 1px solid var(--as-border-strong);
 }
+.env-spot-unlock-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font: 700 8px var(--as-font-mono);
+  letter-spacing: 0.05em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--as-border-strong);
+}
+.env-spot-unlock-tag.unlocked {
+  background: rgba(16, 185, 129, 0.18);
+  color: var(--as-status-success);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+.env-spot-unlock-tag.locked {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--as-status-warning);
+  border-color: rgba(245, 158, 11, 0.45);
+}
 .env-spot-active-tag {
   position: absolute;
   bottom: 4px;
@@ -713,6 +733,174 @@ kbd {
   text-overflow: ellipsis;
 }
 
+/* HUD Callsign Badge, Career Tally & Post-Shift Global Leaderboard */
+.hud-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.hud-brand {
+  display: grid;
+  gap: 2px;
+}
+.hud-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.callsign-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  border-radius: var(--as-radius-pill);
+  font: 600 11px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+.callsign-edit-btn,
+.callsign-save-btn,
+.callsign-cancel-btn {
+  font: 600 10px var(--as-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-surface);
+  color: var(--as-text-secondary);
+  cursor: pointer;
+}
+.callsign-edit-btn:hover,
+.callsign-save-btn:hover {
+  border-color: var(--as-accent-primary);
+  color: var(--as-accent-primary);
+}
+.callsign-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.callsign-input {
+  width: 140px;
+  padding: 4px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-accent-primary);
+  background: var(--as-bg-base);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+}
+.callsign-error {
+  font: 500 10px var(--as-font-mono);
+  color: var(--as-status-error);
+}
+.smoke-tally-career {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--as-border-subtle);
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-text-secondary);
+}
+.smoke-result {
+  width: min(440px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  z-index: 25;
+}
+.break-report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px;
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md);
+}
+.break-report-stats dt {
+  font: 600 9px var(--as-font-mono);
+  letter-spacing: 0.08em;
+  color: var(--as-text-muted);
+  margin-bottom: 4px;
+}
+.break-report-stats dd {
+  margin: 0;
+  font: 700 15px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+.unlock-banner {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-accent-muted);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  font: 700 11px var(--as-font-mono);
+  letter-spacing: 0.04em;
+}
+.leaderboard-panel {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md);
+  text-align: left;
+}
+.leaderboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.leaderboard-meta {
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-surface);
+  font: 500 11px var(--as-font-mono);
+}
+.leaderboard-rank {
+  color: var(--as-accent-primary);
+  font-weight: 700;
+}
+.leaderboard-callsign {
+  color: var(--as-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderboard-env {
+  color: var(--as-text-muted);
+  font-size: 10px;
+}
+.leaderboard-score {
+  color: var(--as-text-secondary);
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .env-deck-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -727,6 +915,11 @@ kbd {
   .env-deck.is-collapsed {
     min-width: 0;
   }
+  .hud-command {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+  }
 }
+
 
 

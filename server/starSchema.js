@@ -32,11 +32,17 @@ export const ENVIRONMENT_SEEDS = Object.freeze([
   },
 ]);
 
+/**
+ * @param {number} lifetimeSmoked
+ * @returns {Array<'alleyway' | 'restaurant' | 'parking-garage' | 'dumpster'>}
+ */
 export function getUnlockedEnvironments(lifetimeSmoked) {
   const safeTotal = Number.isFinite(lifetimeSmoked) && lifetimeSmoked > 0 ? Math.floor(lifetimeSmoked) : 0;
-  return ENVIRONMENT_SEEDS
-    .filter(env => safeTotal >= env.unlock_smoked_required)
-    .map(env => env.id);
+  return /** @type {Array<'alleyway' | 'restaurant' | 'parking-garage' | 'dumpster'>} */ (
+    ENVIRONMENT_SEEDS
+      .filter(env => safeTotal >= env.unlock_smoked_required)
+      .map(env => env.id)
+  );
 }
 
 export const SQLITE_PRAGMA_STATEMENTS = Object.freeze([

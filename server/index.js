@@ -47,6 +47,49 @@ function readRawRequestBody(req) {
 }
 
 /**
+ * Shared Node HTTP / Connect / Express middleware for /api/v1/* routes.
+ * @param {ReturnType<typeof createSqliteStore>} store
+ */
+export function createNodeApiMiddleware(store) {
+  return async (req, res, next) => {
+    const rawUrl = req.originalUrl || req.url || '/';
+    const pathname = rawUrl.split('?')[0];
+    if (!isApiPathname(pathname)) {
+      return next();
+    }
+
+    const bodyResult = await readRawRequestBody(req);
+    if (!bodyResult.ok) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'Payload exceeds 16kb limit' }));
+      return;
+    }
+
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const clientIp = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : (forwardedFor ?? req.socket?.remoteAddress ?? '127.0.0.1');
+
+    const result = await handleApiRequest(
+      {
+        method: req.method || 'GET',
+        pathname,
+        authHeader: req.headers.authorization,
+        rawBody: bodyResult.rawBody,
+        contentLength: req.headers['content-length'],
+        clientIp,
+      },
+      store
+    );
+
+    res.statusCode = result.status;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(result.body));
+  };
+}
+
+/**
  * @param {import('node:sqlite').DatabaseSync} [db]
  */
 export function createApp(db = openSqliteDb()) {
@@ -70,34 +113,7 @@ export function createApp(db = openSqliteDb()) {
   });
 
   // Server-authoritative API routes (/api/v1/* and subpath-prefixed /idle-smoke(-break)?/api/v1/*)
-  app.use(async (req, res, next) => {
-    if (!isApiPathname(req.path)) {
-      return next();
-    }
-
-    const bodyResult = await readRawRequestBody(req);
-    if (!bodyResult.ok) {
-      res.status(400).json({ error: 'Payload exceeds 16kb limit' });
-      return;
-    }
-
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const clientIp = Array.isArray(forwardedFor) ? forwardedFor[0] : (forwardedFor ?? req.ip);
-
-    const result = await handleApiRequest(
-      {
-        method: req.method,
-        pathname: req.path,
-        authHeader: req.headers.authorization,
-        rawBody: bodyResult.rawBody,
-        contentLength: req.headers['content-length'],
-        clientIp,
-      },
-      store
-    );
-
-    res.status(result.status).json(result.body);
-  });
+  app.use(createNodeApiMiddleware(store));
 
   // Serve static assets for /idle-smoke, /idle-smoke-break, and root requests
   if (existsSync(DIST_DIR)) {

@@ -30,9 +30,46 @@ it('stacks butts in rings, each layer on the last and inside the bowl', () => {
   expect(buttSlot(6).angle).not.toBeCloseTo(buttSlot(0).angle);
 });
 
-it('defines the four static break environments and resolves them by id', () => {
-  expect(ENVIRONMENTS.map(e => e.id)).toEqual(['alleyway', 'restaurant', 'parking-garage', 'dumpster']);
+it('defines the four static break environments and resolves them by id with unlock milestones', () => {
+  expect(ENVIRONMENTS.map(e => ({ id: e.id, unlock: e.unlockSmokedRequired }))).toEqual([
+    { id: 'alleyway', unlock: 0 },
+    { id: 'restaurant', unlock: 5 },
+    { id: 'parking-garage', unlock: 15 },
+    { id: 'dumpster', unlock: 30 },
+  ]);
   expect(getEnvironment('parking-garage').name).toBe('Parking Garage');
 });
+
+it('records relative millisecond pressOffsetsMs from the first drag and ignores post-break drags', async () => {
+  const { freshShiftSession, recordShiftDrag, getUnlockedEnvironments, UNLOCK_THRESHOLDS } = await import('./smokeBreak');
+  let session = freshShiftSession();
+  expect(session.pressOffsetsMs).toEqual([]);
+
+  // First press at t=1000ms starts the clock at offset 0ms
+  session = recordShiftDrag(session, 1_000);
+  expect(session.pressOffsetsMs).toEqual([0]);
+
+  // Subsequent presses record relative offsets from startedAt (1000ms)
+  for (let i = 1; i < PRESSES_PER_CIGARETTE; i++) {
+    session = recordShiftDrag(session, 1_000 + i * 100);
+  }
+  expect(session.state.smoked).toBe(1);
+  expect(session.pressOffsetsMs).toEqual([0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100]);
+
+  // Presses at or after 15,000ms from startedAt (t=16000ms) are ignored
+  const afterBreak = recordShiftDrag(session, 1_000 + BREAK_MS);
+  expect(afterBreak).toBe(session);
+  expect(afterBreak.pressOffsetsMs).toHaveLength(12);
+
+  expect(UNLOCK_THRESHOLDS).toEqual({
+    alleyway: 0,
+    restaurant: 5,
+    'parking-garage': 15,
+    dumpster: 30,
+  });
+  expect(getUnlockedEnvironments(0)).toEqual(['alleyway']);
+  expect(getUnlockedEnvironments(15)).toEqual(['alleyway', 'restaurant', 'parking-garage']);
+});
+
 
 

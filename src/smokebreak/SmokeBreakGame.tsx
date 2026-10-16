@@ -1,6 +1,29 @@
 import { useEffect, useReducer, useRef, useState, type PointerEvent } from 'react';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
-import { BREAK_MS, PRESSES_PER_CIGARETTE, freshBreak, press, remainingMs, type SmokeBreak } from './smokeBreak';
+import {
+  bootstrapPlayerSession,
+  getCachedLeaderboard,
+  getCachedPlayerProfile,
+  resolveShiftEnvironment,
+  startShiftSession,
+  submitFinishedShift,
+  updatePlayerCallsign,
+  type LeaderboardEntry,
+  type LeaderboardResponse,
+  type PlayerProfile,
+  type ShiftFinishResult,
+  type StartedShiftSession,
+} from './shiftClient';
+import {
+  BREAK_MS,
+  PRESSES_PER_CIGARETTE,
+  freshShiftSession,
+  isEditableEventTarget,
+  projectShiftProgression,
+  recordShiftDrag,
+  remainingMs,
+} from './smokeBreak';
+import { BreakReportDialog, CallsignBadge } from './SmokeBreakHud';
 import { SmokeBreakScene } from './SmokeBreakScene';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
@@ -13,13 +36,18 @@ export function SmokeBreakGame({
   environmentId?: EnvironmentId;
   onEnvironmentChange?: (id: EnvironmentId) => void;
 }) {
-  const [state, dispatch] = useReducer((s: SmokeBreak, now: number) => press(s, now), undefined, freshBreak);
+  const [session, dispatch] = useReducer(recordShiftDrag, undefined, freshShiftSession);
+  const { state, pressOffsetsMs } = session;
   const [now, setNow] = useState(() => performance.now());
   const [error, setError] = useState(false);
   const [localEnvId, setLocalEnvId] = useState<EnvironmentId>('alleyway');
   const envId = controlledEnvId ?? localEnvId;
   const setEnvId = onEnvironmentChange ?? setLocalEnvId;
   const env = getEnvironment(envId);
+
+  const [profile, setProfile] = useState<PlayerProfile>(() => getCachedPlayerProfile());
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>(() => getCachedLeaderboard());
+  const [shiftResult, setShiftResult] = useState<ShiftFinishResult | null>(null);
 
   const done = state.startedAt !== undefined && remainingMs(state, now) === 0;
   const doneRef = useRef(done);
@@ -30,7 +58,12 @@ export function SmokeBreakGame({
   /** Touch devices tap anywhere on the screen; every finger that lands is a drag. */
   const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
   const tap = (event: PointerEvent) => {
-    if (event.button !== 0 || (event.target as Element).closest('button, .env-deck')) return;
+    if (
+      event.button !== 0 ||
+      (event.target as Element).closest('button, input, form, .env-deck, .hud-command, .smoke-result')
+    ) {
+      return;
+    }
     if (event.pointerType === 'touch' && !doneRef.current) navigator.vibrate?.(8);
     drag();
   };
@@ -43,6 +76,42 @@ export function SmokeBreakGame({
     const id = setTimeout(() => setArmed(true), 800);
     return () => clearTimeout(id);
   }, [done]);
+
+  useEffect(() => {
+    let active = true;
+    bootstrapPlayerSession().then(({ profile: loadedProfile, leaderboard: loadedBoard }) => {
+      if (!active) return;
+      setProfile(loadedProfile);
+      setLeaderboard(loadedBoard);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const startedShiftPromiseRef = useRef<Promise<StartedShiftSession | null> | null>(null);
+  useEffect(() => {
+    if (state.startedAt === undefined || startedShiftPromiseRef.current !== null) return;
+    startedShiftPromiseRef.current = startShiftSession({ environmentId: env.id });
+  }, [state.startedAt, env.id]);
+
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (!done || submittedRef.current) return;
+    submittedRef.current = true;
+    let active = true;
+    (async () => {
+      const startedShift = startedShiftPromiseRef.current ? await startedShiftPromiseRef.current : null;
+      const result = await submitFinishedShift({
+        shiftId: startedShift?.shiftId,
+        environmentId: startedShift?.environmentId ?? env.id,
+        pressOffsetsMs,
+      });
+      if (!active) return;
+      setShiftResult(result);
+      setProfile(result.profile);
+      setLeaderboard(result.leaderboard);
+    })();
+    return () => { active = false; };
+  }, [done, env.id, pressOffsetsMs]);
 
   useEffect(() => {
     try {
@@ -69,6 +138,9 @@ export function SmokeBreakGame({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (isEditableEventTarget(event.target)) {
+        return;
+      }
       if (event.code !== 'Space') return;
       event.preventDefault();
       if (!event.repeat) drag();
@@ -85,12 +157,53 @@ export function SmokeBreakGame({
 
   const remaining = remainingMs(state, now);
   const seconds = Math.ceil(remaining / 1000);
-  const plural = (n: number) => `${n} ${n === 1 ? 'cigarette' : 'cigarettes'}`;
+
+  const projected = projectShiftProgression(
+    profile.lifetimeSmoked,
+    profile.bestSmoked,
+    profile.unlockedEnvironments,
+    done ? state.smoked : 0
+  );
+  const reportSmoked = shiftResult?.verified ? shiftResult.smoked : state.smoked;
+  const reportLifetimeSmoked = shiftResult?.verified ? shiftResult.profile.lifetimeSmoked : projected.lifetimeSmoked;
+  const reportBestSmoked = shiftResult?.verified ? shiftResult.profile.bestSmoked : projected.bestSmoked;
+  const reportUnlockedEnvironments = shiftResult?.verified
+    ? shiftResult.profile.unlockedEnvironments
+    : projected.unlockedEnvironments;
+  const reportNewlyUnlocked = shiftResult?.verified
+    ? shiftResult.newlyUnlockedEnvironments
+    : projected.newlyUnlockedEnvironments;
+  const verifiedEnv = getEnvironment(resolveShiftEnvironment(env.id, profile.unlockedEnvironments));
+
+  const leaderboardEntries: LeaderboardEntry[] =
+    leaderboard.entries.length > 0
+      ? leaderboard.entries
+      : done
+        ? [
+            {
+              rank: 1,
+              callsign: profile.callsign,
+              smoked: reportSmoked,
+              environmentId: verifiedEnv.id,
+              completedAt: 0,
+            },
+          ]
+        : [];
+
   return <main className="smoke-break" aria-label="Smoke break" onPointerDown={tap}>
-    <header className="hud-command hud-panel">
+    <header className="hud-command hud-panel" onPointerDown={e => e.stopPropagation()}>
       <div className="hud-brand">
         <span className="eyebrow">idleDistribution · {env.sector}</span>
         <strong>Smoke break simulator</strong>
+      </div>
+      <div className="hud-identity">
+        <CallsignBadge
+          callsign={profile.callsign}
+          onSave={async nextCallsign => {
+            const updated = await updatePlayerCallsign(nextCallsign);
+            setProfile(updated);
+          }}
+        />
       </div>
       <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
     </header>
@@ -113,7 +226,12 @@ export function SmokeBreakGame({
             : <>Mash <kbd>Space</kbd> or click to take a drag. The clock starts on your first drag.</>
           : <>{touch ? 'Keep tapping. ' : ''}Each cigarette takes {PRESSES_PER_CIGARETTE} drags. The next one lights as soon as you stub one out.</>}</p>
       </section>
-      <EnvironmentDeck current={env} onSelect={setEnvId} />
+      <EnvironmentDeck
+        current={env}
+        onSelect={setEnvId}
+        lifetimeSmoked={reportLifetimeSmoked}
+        unlockedEnvironments={reportUnlockedEnvironments}
+      />
       <section className="hud-panel smoke-tally" aria-label="Smoke break tally">
         <span className="eyebrow">BUTTS IN THE TRAY</span>
         <strong>{state.smoked}</strong>
@@ -121,15 +239,25 @@ export function SmokeBreakGame({
         <meter aria-label="Current cigarette smoked" value={state.progress} max={PRESSES_PER_CIGARETTE} />
         <span className="eyebrow">BREAK LEFT</span>
         <meter aria-label="Break time left" value={remaining} max={BREAK_MS} />
+        <div className="smoke-tally-career" aria-label="Career smoke break stats">
+          <span>LIFETIME: {reportLifetimeSmoked}</span>
+          <span>BEST: {reportBestSmoked}</span>
+        </div>
       </section>
-      {done && <section className="hud-panel smoke-result" role="dialog" aria-labelledby="smoke-result-title">
-        <span className="eyebrow">BREAK REPORT · {env.name.toUpperCase()}</span>
-        <h2 id="smoke-result-title">{plural(state.smoked)} in {BREAK_MS / 1000} seconds</h2>
-        <p>Supervisor's waving you back in.</p>
-        <button type="button" className="ship" ref={newShift} disabled={!armed} onClick={finish}>Start new shift</button>
-      </section>}
+      {done && (
+        <BreakReportDialog
+          verifiedEnvironment={verifiedEnv}
+          smoked={reportSmoked}
+          lifetimeSmoked={reportLifetimeSmoked}
+          bestSmoked={reportBestSmoked}
+          newlyUnlockedEnvironments={reportNewlyUnlocked}
+          profile={profile}
+          leaderboardEntries={leaderboardEntries}
+          armed={armed}
+          newShiftRef={newShift}
+          onFinish={finish}
+        />
+      )}
     </section>
   </main>;
 }
-
-

@@ -18,6 +18,19 @@ test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 1
   await expect(page.getByRole('heading', { name: 'Light up.' })).toBeVisible();
   await expect(tally.locator('strong')).toHaveText('0');
 
+  // Environment deck displays unlock milestone badges (5, 15, 30 lifetime cigarettes).
+  await expect(page.getByLabel('Unlock milestone: 5 lifetime cigarettes')).toHaveText('5 BUTTS');
+  await expect(page.getByLabel('Unlock milestone: 15 lifetime cigarettes')).toHaveText('15 BUTTS');
+  await expect(page.getByLabel('Unlock milestone: 30 lifetime cigarettes')).toHaveText('30 BUTTS');
+
+  // Players can view and update their employee callsign badge from the HUD header without starting the clock.
+  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · SHIFT-');
+  await page.getByRole('button', { name: 'Edit employee callsign' }).click();
+  const callsignInput = page.getByRole('textbox', { name: 'Employee callsign' });
+  await callsignInput.fill('DOCK-LEAD');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · DOCK-LEAD');
+
   // Clock waits until the first drag, even when switching environments.
   await expect(page.getByRole('img', { name: 'Environment backdrop: Alleyway' })).toBeVisible();
   await page.getByRole('radio', { name: /Parking Garage/ }).click();
@@ -37,6 +50,8 @@ test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 1
   await expect(timer).toHaveText('0:00');
   const dialog = page.getByRole('dialog', { name: '1 cigarette in 15 seconds' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('region', { name: 'Global Top 10 Leaderboard' })).toContainText('DOCK-LEAD');
+  await expect(dialog.getByRole('region', { name: 'Global Top 10 Leaderboard' })).toContainText('1 butts');
 
   // Button arms after 800ms guard against mashing.
   const newShift = dialog.getByRole('button', { name: 'Start new shift' });
@@ -51,5 +66,6 @@ test('renders the 3D break area, smokes a cigarette in 12 drags, completes the 1
   await expect(page.getByRole('img', { name: 'Environment backdrop: Parking Garage' })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
 
 
