@@ -100,10 +100,17 @@ async function requestAppleIdToken(clientId: string): Promise<{ idToken: string;
   if (!win.AppleID?.auth) {
     throw new Error('Apple Sign-In SDK unavailable');
   }
+  const normalizedPath = window.location.pathname.endsWith('/')
+    ? window.location.pathname
+    : `${window.location.pathname}/`;
+  const redirectURI =
+    window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+      ? 'https://idle-smoke-staging.idleaustin.workers.dev/idle-smoke/'
+      : `${window.location.origin}${normalizedPath}`;
   win.AppleID.auth.init({
     clientId,
     scope: 'name email',
-    redirectURI: `${window.location.origin}${window.location.pathname}`,
+    redirectURI,
     usePopup: true,
   });
   const response = await win.AppleID.auth.signIn();
