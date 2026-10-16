@@ -7,12 +7,15 @@ import {
 } from '../server/starSchema.js';
 
 const args = new Set(process.argv.slice(2));
+const isStaging = args.has('--staging');
+const d1DbName = isStaging ? 'idle-smoke-break-staging-db' : 'idle-smoke-break-db';
+const envArgs = isStaging ? ['--env', 'staging'] : [];
 
 if (args.has('--d1-init')) {
   const locationFlag = args.has('--remote') ? '--remote' : '--local';
   execFileSync(
     'npx',
-    ['wrangler', 'd1', 'execute', 'idle-smoke-break-db', locationFlag, '--yes', '--file=server/schema.sql'],
+    ['wrangler', 'd1', 'execute', d1DbName, ...envArgs, locationFlag, '--yes', '--file=server/schema.sql'],
     { stdio: 'inherit' }
   );
   process.exit(0);
@@ -29,7 +32,7 @@ if (args.has('--d1-local') || args.has('--d1-remote')) {
 
   const rawJson = execFileSync(
     'npx',
-    ['wrangler', 'd1', 'execute', 'idle-smoke-break-db', locationFlag, '--json', `--command=${batchQuery}`],
+    ['wrangler', 'd1', 'execute', d1DbName, ...envArgs, locationFlag, '--json', `--command=${batchQuery}`],
     { encoding: 'utf8' }
   );
   const parsed = JSON.parse(rawJson);

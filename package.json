@@ -13,6 +13,7 @@
     "version:next": "node scripts/version.mjs",
     "db:inspect": "node --no-warnings scripts/db-inspect.mjs",
     "db:d1:init": "node --no-warnings scripts/db-inspect.mjs --d1-init",
+    "db:staging": "node --no-warnings scripts/db-inspect.mjs --d1-remote --staging",
     "db:live": "node --no-warnings scripts/db-inspect.mjs --d1-remote",
     "mobile:sync": "npm run build && cap sync",
     "ios:open": "cap open ios",

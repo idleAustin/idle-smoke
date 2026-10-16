@@ -36,8 +36,8 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "idle-smoke-break-db",
-          "database_id": "8b2be842-3a52-4b47-8044-d0e3a2a8014d"
+          "database_name": "idle-smoke-break-staging-db",
+          "database_id": "dd89ff12-7a6c-421f-b72c-4c8c298b0963"
         }
       ]
     }
