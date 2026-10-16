@@ -29,7 +29,7 @@ import {
   recordShiftDrag,
   remainingMs,
 } from './smokeBreak';
-import { BreakReportDialog, CallsignBadge } from './SmokeBreakHud';
+import { BreakReportDialog } from './SmokeBreakHud';
 import {
   SmokeBreakLobby,
   type GameModeId,
@@ -309,24 +309,6 @@ export function SmokeBreakGame({
         <span className="eyebrow">idleDistribution · {env.sector}</span>
         <strong>Smoke break simulator</strong>
       </div>
-      <div className="hud-identity">
-        <CallsignBadge
-          callsign={profile.callsign}
-          onSave={async nextCallsign => {
-            const updated = await updatePlayerCallsign(nextCallsign);
-            setProfile(updated);
-          }}
-        />
-        {state.startedAt === undefined && (
-          <button
-            type="button"
-            className="callsign-edit-btn"
-            onClick={() => setLobbyStep('modes')}
-          >
-            Modes / Map
-          </button>
-        )}
-      </div>
       <div className="hud-right-group">
         <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
         <UserCircleTrigger
@@ -334,6 +316,7 @@ export function SmokeBreakGame({
           isQuickCardOpen={isQuickCardOpen}
           isSettingsModalOpen={isSettingsModalOpen}
           busy={accountBusy}
+          showChangeModeAction={lobbyStep === 'game' && state.startedAt === undefined}
           onToggleQuickCard={() => {
             if (isSettingsModalOpen) {
               setIsSettingsModalOpen(false);
@@ -346,6 +329,7 @@ export function SmokeBreakGame({
             setAccountError(null);
             setIsSettingsModalOpen(true);
           }}
+          onChangeMode={() => setLobbyStep('modes')}
           onSignOut={() => void handleSignOut()}
         />
       </div>
@@ -431,6 +415,10 @@ export function SmokeBreakGame({
           busy={accountBusy}
           error={accountError}
           onClose={() => setIsSettingsModalOpen(false)}
+          onSaveCallsign={async nextCallsign => {
+            const updated = await updatePlayerCallsign(nextCallsign);
+            setProfile(updated);
+          }}
           onSignOut={() => void handleSignOut()}
           onDeleteAccount={() => void handleDeleteAccount()}
         />

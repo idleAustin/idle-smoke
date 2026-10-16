@@ -35,10 +35,16 @@ test('signs in, selects Campaign mode and Sector Map, smokes a cigarette in 12 d
   await expect(mapRegion).toBeVisible();
   await mapRegion.getByRole('button', { name: /Deploy to Alleyway/ }).click();
 
-  // Step 4: Active 3D Smoke Break viewport.
+  // Step 4: Active 3D Smoke Break viewport & top-right user profile circle.
   await expect(page.getByRole('heading', { name: 'Light up.' })).toBeVisible();
   await expect(tally.locator('strong')).toHaveText('0');
-  await expect(page.getByLabel('Employee callsign badge')).toContainText('BADGE · DOCK-LEAD');
+  const profileBtn = page.getByRole('button', { name: 'Open profile card for DOCK-LEAD' });
+  await expect(profileBtn).toBeVisible();
+  await profileBtn.click();
+  const quickCard = page.getByRole('dialog', { name: 'Quick User Profile Card' });
+  await expect(quickCard).toContainText('DOCK-LEAD');
+  await profileBtn.click();
+  await expect(quickCard).toBeHidden();
 
   // Environment deck displays unlock milestone badges (5, 15, 30 lifetime cigarettes).
   await expect(page.getByLabel('Unlock milestone: 5 lifetime cigarettes')).toHaveText('5 BUTTS');

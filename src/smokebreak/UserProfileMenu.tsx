@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { type AuthProviderId, type PlayerProfile } from './shiftClient';
 
 const PROVIDER_DISPLAY: Record<
@@ -41,16 +41,20 @@ export function UserCircleTrigger({
   isQuickCardOpen,
   isSettingsModalOpen,
   busy,
+  showChangeModeAction,
   onToggleQuickCard,
   onOpenSettingsModal,
+  onChangeMode,
   onSignOut,
 }: {
   profile: PlayerProfile;
   isQuickCardOpen: boolean;
   isSettingsModalOpen: boolean;
   busy?: boolean;
+  showChangeModeAction?: boolean;
   onToggleQuickCard: () => void;
   onOpenSettingsModal: () => void;
+  onChangeMode?: () => void;
   onSignOut: () => void;
 }) {
   const providerId: AuthProviderId = profile.authProvider ?? 'guest';
@@ -138,6 +142,18 @@ export function UserCircleTrigger({
               >
                 ⚙️ Open Profile &amp; Account Settings →
               </button>
+              {showChangeModeAction && onChangeMode && (
+                <button
+                  type="button"
+                  className="proto-acct-btn-secondary full"
+                  onClick={() => {
+                    onToggleQuickCard();
+                    onChangeMode();
+                  }}
+                >
+                  🗺️ Switch Game Mode / Map
+                </button>
+              )}
               <button
                 type="button"
                 className="proto-acct-btn-secondary full"
@@ -163,6 +179,7 @@ export function AccountSettingsModal({
   busy,
   error,
   onClose,
+  onSaveCallsign,
   onSignOut,
   onDeleteAccount,
 }: {
@@ -170,14 +187,35 @@ export function AccountSettingsModal({
   busy?: boolean;
   error?: string | null;
   onClose: () => void;
+  onSaveCallsign?: (nextCallsign: string) => Promise<void>;
   onSignOut: () => void;
   onDeleteAccount: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<'profile' | 'danger'>('profile');
   const [confirmStep, setConfirmStep] = useState(false);
+  const [editingCallsign, setEditingCallsign] = useState(false);
+  const [callsignDraft, setCallsignDraft] = useState(profile.callsign);
+  const [callsignBusy, setCallsignBusy] = useState(false);
+  const [callsignError, setCallsignError] = useState<string | null>(null);
+
   const providerId: AuthProviderId = profile.authProvider ?? 'guest';
   const providerInfo = PROVIDER_DISPLAY[providerId];
   const subtitle = profile.authEmail ?? providerInfo.defaultHint;
+
+  const submitCallsign = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!onSaveCallsign) return;
+    setCallsignError(null);
+    setCallsignBusy(true);
+    try {
+      await onSaveCallsign(callsignDraft.trim().toUpperCase());
+      setEditingCallsign(false);
+    } catch (err) {
+      setCallsignError(err instanceof Error ? err.message : 'Invalid callsign');
+    } finally {
+      setCallsignBusy(false);
+    }
+  };
 
   return (
     <div
@@ -239,6 +277,54 @@ export function AccountSettingsModal({
                     <small>{subtitle}</small>
                   </div>
                 </div>
+
+                {onSaveCallsign && (
+                  <div className="proto-chatgpt-row">
+                    {!editingCallsign ? (
+                      <>
+                        <div>
+                          <strong>Operator Callsign</strong>
+                          <small>Displayed on global and sector leaderboards ({profile.callsign}).</small>
+                        </div>
+                        <button
+                          type="button"
+                          className="proto-acct-btn-secondary"
+                          onClick={() => {
+                            setCallsignDraft(profile.callsign);
+                            setCallsignError(null);
+                            setEditingCallsign(true);
+                          }}
+                        >
+                          Edit Callsign
+                        </button>
+                      </>
+                    ) : (
+                      <form className="callsign-form" onSubmit={submitCallsign} style={{ width: '100%' }}>
+                        <input
+                          className="callsign-input"
+                          type="text"
+                          value={callsignDraft}
+                          maxLength={16}
+                          onChange={e => setCallsignDraft(e.target.value.toUpperCase())}
+                          aria-label="Edit operator callsign"
+                          disabled={callsignBusy}
+                        />
+                        <button type="submit" className="callsign-save-btn" disabled={callsignBusy}>
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="callsign-cancel-btn"
+                          disabled={callsignBusy}
+                          onClick={() => setEditingCallsign(false)}
+                        >
+                          Cancel
+                        </button>
+                        {callsignError && <span className="callsign-error">{callsignError}</span>}
+                      </form>
+                    )}
+                  </div>
+                )}
 
                 <div className="proto-chatgpt-row">
                   <div>
