@@ -271,16 +271,29 @@ function LoginScreen({
 
   const finishLogin = async (chosenHandle?: string) => {
     setError(null);
-    const clean = (chosenHandle ?? username).trim().toUpperCase();
+    const rawTrimmed = (chosenHandle ?? username).trim();
+    const isEmail = rawTrimmed.includes('@');
+    const clean = isEmail ? rawTrimmed.toLowerCase() : rawTrimmed.toUpperCase();
+
+    if (isEmail && password.trim().length === 0) {
+      setError('Enter a password (4+ characters) to sign in or create an account with your email');
+      return;
+    }
+
     if (password.trim().length > 0 && onLoginPassword) {
-      const targetCallsign = clean || profile.callsign;
-      if (!/^[A-Za-z0-9 _-]{2,16}$/.test(targetCallsign)) {
-        setError('Username must be 2–16 characters (letters, numbers, - or _)');
+      const targetIdentifier = clean || profile.callsign;
+      if (isEmail) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(targetIdentifier)) {
+          setError('Enter a valid email address');
+          return;
+        }
+      } else if (!/^[A-Za-z0-9 _-]{2,16}$/.test(targetIdentifier)) {
+        setError('Callsign must be 2–16 characters (letters, numbers, - or _)');
         return;
       }
       setBusy(true);
       try {
-        await onLoginPassword(targetCallsign, password);
+        await onLoginPassword(targetIdentifier, password);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Login failed');
         setBusy(false);
@@ -293,7 +306,7 @@ function LoginScreen({
 
     if (clean && clean !== profile.callsign) {
       if (!/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) {
-        setError('Username must be 2–16 characters (letters, numbers, - or _)');
+        setError('Callsign must be 2–16 characters (letters, numbers, - or _)');
         return;
       }
       setBusy(true);
@@ -413,14 +426,14 @@ function LoginScreen({
 
         <form className="proto-login-form" onSubmit={handleSubmit}>
           <label className="proto-field-label">
-            <span>USERNAME OR CALLSIGN</span>
+            <span>CALLSIGN OR EMAIL</span>
             <input
               type="text"
               aria-label="Login callsign"
               value={username}
-              maxLength={16}
-              onChange={e => setUsername(e.target.value.toUpperCase())}
-              placeholder={profile.callsign}
+              maxLength={120}
+              onChange={e => setUsername(e.target.value)}
+              placeholder={`${profile.callsign} or you@email.com`}
             />
           </label>
           <label className="proto-field-label">

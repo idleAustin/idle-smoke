@@ -1,4 +1,9 @@
-import { formatPlayerProfile, getUnlockedEnvironments } from './starSchema.js';
+import {
+  VALID_TAGLINE_CADENCES,
+  formatPlayerProfile,
+  getUnlockedEnvironments,
+  isEmailInAdminList,
+} from './starSchema.js';
 import {
   MAX_BODY_BYTES,
   checkRateLimit,
@@ -11,6 +16,7 @@ import {
   normalizePlatform,
   normalizeStartedAtUnix,
   validateCallsign,
+  validateLoginIdentifier,
   validatePassword,
   verifyOAuthIdToken,
   verifyPassword,
@@ -65,6 +71,90 @@ async function authenticatePlayer(authHeader, store) {
 }
 
 /**
+ * Verifies admin access via either X-Admin-Passcode header or an allowlisted account email.
+ * @param {{ authHeader?: string | null, adminPasscode?: string | null }} req
+ * @param {ReturnType<typeof import('./sqliteDb.js').createSqliteStore>} store
+ * @param {{ env?: Record<string, unknown> }} [options]
+ */
+async function authenticateAdmin(req, store, options = {}) {
+  const expectedPasscode = String(
+    options.env?.ADMIN_PASSCODE ?? process.env.ADMIN_PASSCODE ?? ''
+  ).trim();
+  const providedPasscode =
+    typeof req.adminPasscode === 'string' ? req.adminPasscode.trim() : '';
+
+  if (providedPasscode && expectedPasscode && providedPasscode === expectedPasscode) {
+    return { ok: true };
+  }
+
+  const playerRow = await authenticatePlayer(req.authHeader, store);
+  const rawAdminEmails = String(
+    options.env?.ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? ''
+  );
+  if (
+    playerRow &&
+    Boolean(playerRow.auth_provider) &&
+    isEmailInAdminList(playerRow.auth_email, rawAdminEmails)
+  ) {
+    return { ok: true, playerRow };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    error: 'Admin access required. Sign in with an Admin email or enter a valid Admin Passcode.',
+  };
+}
+
+/**
+ * Parses single or bulk newline-separated joke strings from POST /api/v1/admin/taglines.
+ * @param {Record<string, unknown>} body
+ * @returns {{ ok: true, jokes: string[] } | { ok: false, error: string }}
+ */
+function normalizeJokeCandidates(body) {
+  const rawLines = [];
+  if (typeof body.jokeText === 'string') {
+    rawLines.push(...body.jokeText.split(/\r?\n/));
+  }
+  if (Array.isArray(body.jokes)) {
+    for (const item of body.jokes) {
+      if (typeof item === 'string') {
+        rawLines.push(...item.split(/\r?\n/));
+      }
+    }
+  }
+
+  const cleaned = [];
+  const seen = new Set();
+  for (const line of rawLines) {
+    const stripped = line
+      .trim()
+      .replace(/^(?:\d+[.)]\s*|[-*•]\s*)/, '')
+      .replace(/^["“]|["”]$/g, '')
+      .trim();
+    if (!stripped) continue;
+    if (stripped.length < 3 || stripped.length > 280) {
+      return {
+        ok: false,
+        error: `Each tagline must be between 3 and 280 characters (got ${stripped.length} chars)`,
+      };
+    }
+    if (!seen.has(stripped)) {
+      seen.add(stripped);
+      cleaned.push(stripped);
+    }
+  }
+
+  if (cleaned.length === 0) {
+    return { ok: false, error: 'Provide at least one tagline (3–280 characters)' };
+  }
+  if (cleaned.length > 250) {
+    return { ok: false, error: 'Maximum 250 taglines per batch import' };
+  }
+  return { ok: true, jokes: cleaned };
+}
+
+/**
  * Shared authentication, environment unlock check, and platform validation for /shifts/start and /shifts/finish.
  * @param {string | null | undefined} authHeader
  * @param {Record<string, unknown>} body
@@ -102,15 +192,18 @@ async function authenticateAndValidateShiftContext(authHeader, body, store) {
 
 /**
  * Shared server-authoritative API handler used by both Express (server/index.js) and Cloudflare Workers (server/worker.js).
- * @param {{ method: string, pathname: string, authHeader?: string | null, rawBody?: string, contentLength?: number | string | null, clientIp?: string | null }} req
+ * @param {{ method: string, pathname: string, authHeader?: string | null, adminPasscode?: string | null, rawBody?: string, contentLength?: number | string | null, clientIp?: string | null }} req
  * @param {ReturnType<typeof import('./sqliteDb.js').createSqliteStore>} store
- * @param {{ nowUnix?: number, jwksFetch?: typeof fetch }} [options]
+ * @param {{ nowUnix?: number, jwksFetch?: typeof fetch, env?: Record<string, unknown> }} [options]
  * @returns {Promise<{ status: number, body: Record<string, unknown> }>}
  */
 export async function handleApiRequest(req, store, options = {}) {
   const method = req.method.toUpperCase();
   const route = normalizeApiPathname(req.pathname);
   const nowUnix = options.nowUnix ?? Math.floor(Date.now() / 1000);
+  const rawAdminEmails = String(
+    options.env?.ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? ''
+  );
 
   if (!checkRateLimit(req.clientIp, nowUnix * 1000)) {
     return { status: 429, body: { error: 'Rate limit exceeded' } };
@@ -135,12 +228,26 @@ export async function handleApiRequest(req, store, options = {}) {
     return { status: 200, body: leaderboard };
   }
 
+  if (route === '/api/v1/taglines' && method === 'GET') {
+    const data = await store.getActiveTaglines();
+    return { status: 200, body: data };
+  }
+
+  if (route === '/api/v1/admin/taglines' && method === 'GET') {
+    const adminCheck = await authenticateAdmin(req, store, options);
+    if (!adminCheck.ok) {
+      return { status: adminCheck.status, body: { error: adminCheck.error } };
+    }
+    const data = await store.getAllTaglines();
+    return { status: 200, body: data };
+  }
+
   if (route === '/api/v1/players/me' && method === 'GET') {
     const playerRow = await authenticatePlayer(req.authHeader, store);
     if (!playerRow) {
       return { status: 401, body: { error: 'Valid Bearer playerToken required' } };
     }
-    return { status: 200, body: formatPlayerProfile(playerRow) };
+    return { status: 200, body: formatPlayerProfile(playerRow, rawAdminEmails) };
   }
 
   if (route === '/api/v1/players/me' && method === 'DELETE') {
@@ -182,7 +289,7 @@ export async function handleApiRequest(req, store, options = {}) {
       if (!existingPlayer) {
         return { status: 401, body: { error: 'Invalid Bearer playerToken' } };
       }
-      return { status: 200, body: formatPlayerProfile(existingPlayer) };
+      return { status: 200, body: formatPlayerProfile(existingPlayer, rawAdminEmails) };
     }
 
     const platformResult = normalizePlatform(body.platform);
@@ -216,7 +323,7 @@ export async function handleApiRequest(req, store, options = {}) {
     return {
       status: 201,
       body: {
-        ...formatPlayerProfile(createdRow),
+        ...formatPlayerProfile(createdRow, rawAdminEmails),
         playerToken: creds.playerToken,
       },
     };
@@ -247,13 +354,13 @@ export async function handleApiRequest(req, store, options = {}) {
     if (!updatedRow) {
       return { status: 404, body: { error: 'Player not found' } };
     }
-    return { status: 200, body: formatPlayerProfile(updatedRow) };
+    return { status: 200, body: formatPlayerProfile(updatedRow, rawAdminEmails) };
   }
 
   if (route === '/api/v1/auth/login' && method === 'POST') {
-    const callsignResult = validateCallsign(body.callsign);
-    if (!callsignResult.ok) {
-      return { status: 400, body: { error: callsignResult.error } };
+    const loginId = validateLoginIdentifier(body.callsign);
+    if (!loginId.ok) {
+      return { status: 400, body: { error: loginId.error } };
     }
     const passwordResult = validatePassword(body.password);
     if (!passwordResult.ok) {
@@ -264,8 +371,7 @@ export async function handleApiRequest(req, store, options = {}) {
       return { status: 400, body: { error: platformResult.error } };
     }
 
-    const normalizedCallsign = callsignResult.callsign.toUpperCase();
-    const existingIdentity = await store.getAuthIdentity('password', normalizedCallsign);
+    const existingIdentity = await store.getAuthIdentity('password', loginId.providerSub);
 
     if (existingIdentity) {
       const validPassword = await verifyPassword(
@@ -283,7 +389,7 @@ export async function handleApiRequest(req, store, options = {}) {
 
       const callerPlayer = await authenticatePlayer(req.authHeader, store);
       if (callerPlayer && String(callerPlayer.id) === String(targetPlayer.id)) {
-        return { status: 200, body: formatPlayerProfile(targetPlayer) };
+        return { status: 200, body: formatPlayerProfile(targetPlayer, rawAdminEmails) };
       }
 
       const sessionCreds = generatePlayerCredentials();
@@ -292,13 +398,16 @@ export async function handleApiRequest(req, store, options = {}) {
         provider: 'session',
         providerSub: sessionTokenHash,
         playerId: String(targetPlayer.id),
+        email: existingIdentity.email ? String(existingIdentity.email) : loginId.email,
         nowUnix,
       });
+
+      const refreshedPlayer = (await store.getPlayerById(String(targetPlayer.id))) ?? targetPlayer;
 
       return {
         status: 200,
         body: {
-          ...formatPlayerProfile(targetPlayer),
+          ...formatPlayerProfile(refreshedPlayer, rawAdminEmails),
           playerToken: sessionCreds.playerToken,
         },
       };
@@ -312,16 +421,19 @@ export async function handleApiRequest(req, store, options = {}) {
       const tokenHash = await hashPlayerToken(creds.playerToken);
       playerRow = await store.createPlayer({
         id: creds.playerId,
-        callsign: normalizedCallsign,
+        callsign: loginId.callsign,
         tokenHash,
         platform: platformResult.platform,
         nowUnix,
       });
       issuedToken = creds.playerToken;
-    } else if (String(playerRow.callsign) !== normalizedCallsign) {
+    } else if (
+      (!loginId.isEmail || String(playerRow.callsign).startsWith('SHIFT-')) &&
+      String(playerRow.callsign) !== loginId.callsign
+    ) {
       playerRow = await store.updatePlayerCallsign(
         String(playerRow.id),
-        normalizedCallsign,
+        loginId.callsign,
         nowUnix
       );
     }
@@ -333,9 +445,10 @@ export async function handleApiRequest(req, store, options = {}) {
     const secretHash = await hashPassword(passwordResult.password);
     await store.upsertAuthIdentity({
       provider: 'password',
-      providerSub: normalizedCallsign,
+      providerSub: loginId.providerSub,
       playerId: String(playerRow.id),
       secretHash,
+      email: loginId.email,
       nowUnix,
     });
     playerRow = (await store.getPlayerById(String(playerRow.id))) ?? playerRow;
@@ -343,7 +456,7 @@ export async function handleApiRequest(req, store, options = {}) {
     return {
       status: 200,
       body: {
-        ...formatPlayerProfile(playerRow),
+        ...formatPlayerProfile(playerRow, rawAdminEmails),
         ...(issuedToken ? { playerToken: issuedToken } : {}),
       },
     };
@@ -372,7 +485,7 @@ export async function handleApiRequest(req, store, options = {}) {
 
       const callerPlayer = await authenticatePlayer(req.authHeader, store);
       if (callerPlayer && String(callerPlayer.id) === String(targetPlayer.id)) {
-        return { status: 200, body: formatPlayerProfile(targetPlayer) };
+        return { status: 200, body: formatPlayerProfile(targetPlayer, rawAdminEmails) };
       }
 
       const sessionCreds = generatePlayerCredentials();
@@ -388,7 +501,7 @@ export async function handleApiRequest(req, store, options = {}) {
       return {
         status: 200,
         body: {
-          ...formatPlayerProfile(targetPlayer),
+          ...formatPlayerProfile(targetPlayer, rawAdminEmails),
           playerToken: sessionCreds.playerToken,
         },
       };
@@ -443,10 +556,82 @@ export async function handleApiRequest(req, store, options = {}) {
     return {
       status: 200,
       body: {
-        ...formatPlayerProfile(playerRow),
+        ...formatPlayerProfile(playerRow, rawAdminEmails),
         ...(issuedToken ? { playerToken: issuedToken } : {}),
       },
     };
+  }
+
+  if (route === '/api/v1/admin/taglines' && method === 'POST') {
+    const adminCheck = await authenticateAdmin(req, store, options);
+    if (!adminCheck.ok) {
+      return { status: adminCheck.status, body: { error: adminCheck.error } };
+    }
+    const candidateResult = normalizeJokeCandidates(body);
+    if (!candidateResult.ok) {
+      return { status: 400, body: { error: candidateResult.error } };
+    }
+    const data = await store.addTaglines(candidateResult.jokes, nowUnix);
+    return {
+      status: 201,
+      body: {
+        ...data,
+        addedCount: candidateResult.jokes.length,
+      },
+    };
+  }
+
+  if (route === '/api/v1/admin/taglines' && method === 'PATCH') {
+    const adminCheck = await authenticateAdmin(req, store, options);
+    if (!adminCheck.ok) {
+      return { status: adminCheck.status, body: { error: adminCheck.error } };
+    }
+
+    if (body.cadence !== undefined) {
+      const cadence = typeof body.cadence === 'string' ? body.cadence.trim() : '';
+      if (!VALID_TAGLINE_CADENCES.includes(/** @type {any} */ (cadence))) {
+        return {
+          status: 400,
+          body: { error: `Invalid cadence. Supported: ${VALID_TAGLINE_CADENCES.join(', ')}` },
+        };
+      }
+      const data = await store.setTaglineCadence(cadence, nowUnix);
+      return { status: 200, body: data };
+    }
+
+    const id = Number(body.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return { status: 400, body: { error: 'Valid tagline id is required' } };
+    }
+
+    let jokeText = null;
+    if (body.jokeText !== undefined) {
+      if (typeof body.jokeText !== 'string') {
+        return { status: 400, body: { error: 'jokeText must be a string' } };
+      }
+      const trimmed = body.jokeText.trim();
+      if (trimmed.length < 3 || trimmed.length > 280) {
+        return { status: 400, body: { error: 'Tagline must be between 3 and 280 characters' } };
+      }
+      jokeText = trimmed;
+    }
+
+    const isActive = typeof body.isActive === 'boolean' ? body.isActive : null;
+    const data = await store.updateTagline({ id, jokeText, isActive });
+    return { status: 200, body: data };
+  }
+
+  if (route === '/api/v1/admin/taglines' && method === 'DELETE') {
+    const adminCheck = await authenticateAdmin(req, store, options);
+    if (!adminCheck.ok) {
+      return { status: adminCheck.status, body: { error: adminCheck.error } };
+    }
+    const id = Number(body.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return { status: 400, body: { error: 'Valid tagline id is required' } };
+    }
+    const data = await store.deleteTagline(id);
+    return { status: 200, body: data };
   }
 
   if (route === '/api/v1/shifts/start' && method === 'POST') {
@@ -527,7 +712,7 @@ export async function handleApiRequest(req, store, options = {}) {
               tapCount: Number(existingShift.tap_count),
               durationMs: Number(existingShift.duration_ms),
               newlyUnlockedEnvironments: [],
-              profile: formatPlayerProfile(playerRow),
+              profile: formatPlayerProfile(playerRow, rawAdminEmails),
               leaderboard,
             },
           };
@@ -564,7 +749,7 @@ export async function handleApiRequest(req, store, options = {}) {
       completedAt: nowUnix,
     });
 
-    const updatedProfile = formatPlayerProfile(updatedPlayerRow ?? playerRow);
+    const updatedProfile = formatPlayerProfile(updatedPlayerRow ?? playerRow, rawAdminEmails);
     const newlyUnlockedEnvironments = updatedProfile.unlockedEnvironments.filter(
       id => !previousUnlocked.includes(id)
     );

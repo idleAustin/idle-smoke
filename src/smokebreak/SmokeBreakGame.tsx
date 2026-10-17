@@ -2,9 +2,12 @@ import { useEffect, useReducer, useRef, useState, type PointerEvent } from 'reac
 import { isNativeMobile, triggerDragHaptic } from '../platform';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
+  FALLBACK_TAGLINES,
   bootstrapPlayerSession,
   deletePlayerAccount,
+  fetchActiveTaglines,
   flushPendingShifts,
+  formatWhereTagline,
   getCachedLeaderboard,
   getCachedPlayerProfile,
   loginWithOAuth,
@@ -19,6 +22,8 @@ import {
   type PlayerProfile,
   type ShiftFinishResult,
   type StartedShiftSession,
+  type TaglineCadence,
+  type TaglineItem,
 } from './shiftClient';
 import {
   BREAK_MS,
@@ -90,6 +95,12 @@ export function SmokeBreakGame({
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+
+  const [taglines, setTaglines] = useState<readonly TaglineItem[]>(FALLBACK_TAGLINES);
+  const [taglineCadence, setTaglineCadence] = useState<TaglineCadence>('60s');
+  const [activeJokeIndex, setActiveJokeIndex] = useState<number>(() =>
+    Math.floor(Math.random() * FALLBACK_TAGLINES.length)
+  );
 
   const handleSignOut = async () => {
     setAccountBusy(true);
@@ -180,6 +191,17 @@ export function SmokeBreakGame({
       setProfile(loadedProfile);
       setLeaderboard(loadedBoard);
     });
+    fetchActiveTaglines().then(collection => {
+      if (!active) return;
+      setTaglines(collection.taglines);
+      setTaglineCadence(collection.cadence);
+      if (collection.cadence === 'daily') {
+        const dayIndex = Math.floor(Date.now() / 86_400_000) % collection.taglines.length;
+        setActiveJokeIndex(dayIndex);
+      } else {
+        setActiveJokeIndex(Math.floor(Math.random() * collection.taglines.length));
+      }
+    });
     const onOnline = () => {
       flushPendingShifts().then(({ profile: syncedProfile, leaderboard: syncedBoard }) => {
         if (!active) return;
@@ -193,6 +215,37 @@ export function SmokeBreakGame({
       window.removeEventListener('online', onOnline);
     };
   }, []);
+
+  useEffect(() => {
+    if (taglines.length <= 1) return;
+    if (taglineCadence === 'daily') {
+      const dayIndex = Math.floor(Date.now() / 86_400_000) % taglines.length;
+      setActiveJokeIndex(dayIndex);
+      return;
+    }
+    if (taglineCadence === 'per_shift') {
+      return;
+    }
+    const intervalMs =
+      taglineCadence === '5m'
+        ? 300_000
+        : taglineCadence === '15m'
+          ? 900_000
+          : taglineCadence === '1h'
+            ? 3_600_000
+            : 60_000;
+    const timerId = setInterval(() => {
+      setActiveJokeIndex(prev => {
+        if (taglines.length <= 1) return 0;
+        let next = Math.floor(Math.random() * taglines.length);
+        if (next === prev) {
+          next = (prev + 1) % taglines.length;
+        }
+        return next;
+      });
+    }, intervalMs);
+    return () => clearInterval(timerId);
+  }, [taglines, taglineCadence]);
 
   const startedAtUnixRef = useRef<number | null>(null);
   const startedShiftPromiseRef = useRef<Promise<StartedShiftSession | null> | null>(null);
@@ -303,11 +356,18 @@ export function SmokeBreakGame({
           ]
         : [];
 
+  const activeTagline = taglines[activeJokeIndex % Math.max(1, taglines.length)] ?? FALLBACK_TAGLINES[0];
+
   return <main className="smoke-break" aria-label="Smoke break" onPointerDown={tap}>
     <header className="hud-command hud-panel" onPointerDown={e => e.stopPropagation()}>
       <div className="hud-brand">
-        <span className="eyebrow">idleDistribution · {env.sector}</span>
-        <strong>Smoke break simulator</strong>
+        <span className="eyebrow">idleSmoke · {env.sector}</span>
+        <strong className="hud-tagline">
+          <span className="hud-tagline-brand">idleSmoke</span>
+          <span className="hud-tagline-copy">
+            {' — '}{formatWhereTagline(activeTagline.jokeText)}
+          </span>
+        </strong>
       </div>
       <div className="hud-right-group">
         <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
@@ -421,6 +481,13 @@ export function SmokeBreakGame({
           }}
           onSignOut={() => void handleSignOut()}
           onDeleteAccount={() => void handleDeleteAccount()}
+          onTaglinesUpdated={next => {
+            if (next.taglines.length > 0) {
+              setTaglines(next.taglines);
+              setActiveJokeIndex(idx => idx % next.taglines.length);
+            }
+            setTaglineCadence(next.cadence);
+          }}
         />
       )}
       {done && (

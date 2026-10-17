@@ -932,5 +932,130 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       db.close();
     }
   });
+
+  it('serves active taglines on GET /api/v1/taglines and supports Admin CRUD + bulk import on /api/v1/admin/taglines', async () => {
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-16T15:00:00Z') });
+    const store = createSqliteStore(db);
+
+    try {
+      const publicGet = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/taglines' },
+        store
+      );
+      expect(publicGet.status).toBe(200);
+      expect(publicGet.body.cadence).toBe('60s');
+      const initialTaglines = publicGet.body.taglines as Array<{ id: number; jokeText: string; isActive: boolean }>;
+      expect(initialTaglines.length).toBe(12);
+
+      const ephemeralPasscode = globalThis.crypto.randomUUID();
+      const ephemeralAdminEmail = `operator-${globalThis.crypto.randomUUID().slice(0, 8)}@example.test`;
+      const ephemeralUserSecret = globalThis.crypto.randomUUID();
+
+      // Unauthorized admin request -> 403
+      const forbidden = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/admin/taglines' },
+        store,
+        { env: { ADMIN_PASSCODE: ephemeralPasscode } }
+      );
+      expect(forbidden.status).toBe(403);
+
+      // Bulk-import 2 new jokes via newline-separated string
+      const bulkAdd = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/admin/taglines',
+          adminPasscode: ephemeralPasscode,
+          rawBody: JSON.stringify({
+            jokeText: '1. the fire marshal already gave up on Sector 03.\n2. your 15-minute break is now entering its fourth fiscal quarter.',
+          }),
+        },
+        store,
+        { env: { ADMIN_PASSCODE: ephemeralPasscode } }
+      );
+      expect(bulkAdd.status).toBe(201);
+      expect(bulkAdd.body.addedCount).toBe(2);
+      expect((bulkAdd.body.taglines as unknown[]).length).toBe(14);
+
+      // Update cadence to daily
+      const patchCadence = await handleApiRequest(
+        {
+          method: 'PATCH',
+          pathname: '/api/v1/admin/taglines',
+          adminPasscode: ephemeralPasscode,
+          rawBody: JSON.stringify({ cadence: 'daily' }),
+        },
+        store,
+        { env: { ADMIN_PASSCODE: ephemeralPasscode } }
+      );
+      expect(patchCadence.status).toBe(200);
+      expect(patchCadence.body.cadence).toBe('daily');
+
+      // Pause tagline #1 and delete tagline #2
+      const pauseOne = await handleApiRequest(
+        {
+          method: 'PATCH',
+          pathname: '/api/v1/admin/taglines',
+          adminPasscode: ephemeralPasscode,
+          rawBody: JSON.stringify({ id: 1, isActive: false }),
+        },
+        store,
+        { env: { ADMIN_PASSCODE: ephemeralPasscode } }
+      );
+      expect(pauseOne.status).toBe(200);
+
+      const deleteTwo = await handleApiRequest(
+        {
+          method: 'DELETE',
+          pathname: '/api/v1/admin/taglines',
+          adminPasscode: ephemeralPasscode,
+          rawBody: JSON.stringify({ id: 2 }),
+        },
+        store,
+        { env: { ADMIN_PASSCODE: ephemeralPasscode } }
+      );
+      expect(deleteTwo.status).toBe(200);
+      expect((deleteTwo.body.taglines as unknown[]).length).toBe(13);
+
+      // Public GET reflects only active taglines (12 active out of 13 remaining) and 'daily' cadence
+      const publicAfter = await handleApiRequest(
+        { method: 'GET', pathname: '/api/v1/taglines' },
+        store
+      );
+      expect(publicAfter.body.cadence).toBe('daily');
+      expect((publicAfter.body.taglines as unknown[]).length).toBe(12);
+
+      // Signing in via /api/v1/auth/login with an allowlisted admin email + password grants isAdmin automatically
+      const adminEmailLogin = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: ephemeralAdminEmail,
+            password: ephemeralUserSecret,
+            platform: 'web',
+          }),
+        },
+        store,
+        { env: { ADMIN_EMAILS: ephemeralAdminEmail } }
+      );
+      expect(adminEmailLogin.status).toBe(200);
+      expect(adminEmailLogin.body.isAdmin).toBe(true);
+      expect(adminEmailLogin.body.authEmail).toBe(ephemeralAdminEmail);
+      const adminToken = String(adminEmailLogin.body.playerToken);
+
+      const adminGetViaBearer = await handleApiRequest(
+        {
+          method: 'GET',
+          pathname: '/api/v1/admin/taglines',
+          authHeader: `Bearer ${adminToken}`,
+        },
+        store,
+        { env: { ADMIN_EMAILS: ephemeralAdminEmail } }
+      );
+      expect(adminGetViaBearer.status).toBe(200);
+    } finally {
+      db.close();
+    }
+  });
 });
 

@@ -2054,6 +2054,141 @@ kbd {
   color: #fb7185 !important;
 }
 
+.hud-brand {
+  min-width: 0;
+  flex: 1;
+}
+
+.hud-tagline {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--as-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-tagline-brand {
+  color: var(--as-accent-primary);
+  font-weight: 800;
+}
+
+.hud-tagline-copy {
+  color: var(--as-text-secondary);
+  font-weight: 500;
+}
+
+.admin-notice {
+  padding: 8px 12px;
+  border-radius: var(--as-radius-sm);
+  background: rgba(132, 204, 22, 0.14);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  font: 600 11px var(--as-font-mono);
+}
+
+.admin-passcode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.admin-cadence-select {
+  padding: 7px 10px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+  cursor: pointer;
+}
+
+.admin-add-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.admin-add-form label {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-add-form strong {
+  font: 700 12px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+
+.admin-add-form small {
+  font-size: 11px;
+  color: var(--as-text-secondary);
+}
+
+.admin-joke-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: #090a0d;
+  color: var(--as-text-primary);
+  font: 500 11.5px/1.45 var(--as-font-mono);
+  resize: vertical;
+}
+
+.admin-add-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-joke-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-joke-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.admin-joke-row.is-inactive {
+  opacity: 0.55;
+}
+
+.admin-joke-id {
+  font: 700 10.5px var(--as-font-mono);
+  color: var(--as-accent-primary);
+  padding: 2px 6px;
+  border-radius: var(--as-radius-sm);
+  background: rgba(132, 204, 22, 0.12);
+}
+
+.admin-joke-text {
+  font: 500 11.5px/1.4 var(--as-font-body);
+  color: var(--as-text-primary);
+  min-width: 0;
+}
+
+.admin-joke-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 @media (max-width: 680px) {
   .proto-chatgpt-body {
     grid-template-columns: 1fr;

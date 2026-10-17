@@ -89,12 +89,14 @@ export default {
           method: request.method,
           pathname: url.pathname,
           authHeader: request.headers.get('authorization'),
+          adminPasscode: request.headers.get('x-admin-passcode'),
           rawBody: bodyResult.rawBody,
           contentLength: request.headers.get('content-length'),
           clientIp:
             request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for'),
         },
-        createD1Store(env.DB)
+        createD1Store(env.DB),
+        { env }
       );
 
       return withSecurityHeaders(

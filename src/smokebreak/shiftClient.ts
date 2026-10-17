@@ -9,6 +9,20 @@ import {
 
 export type AuthProviderId = 'apple' | 'google' | 'password' | 'guest';
 
+export type TaglineCadence = '60s' | '5m' | '15m' | '1h' | 'daily' | 'per_shift';
+
+export interface TaglineItem {
+  id: number;
+  jokeText: string;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export interface TaglineCollection {
+  cadence: TaglineCadence;
+  taglines: TaglineItem[];
+}
+
 export interface PlayerProfile {
   playerId: string;
   callsign: string;
@@ -19,6 +33,7 @@ export interface PlayerProfile {
   unlockedEnvironments: EnvironmentId[];
   authProvider?: AuthProviderId;
   authEmail?: string;
+  isAdmin?: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -178,6 +193,7 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
       : undefined;
   const authEmail =
     typeof raw.authEmail === 'string' && raw.authEmail.length > 0 ? raw.authEmail : undefined;
+  const isAdmin = raw.isAdmin === true;
   return {
     playerId: String(raw.playerId ?? DEFAULT_PROFILE.playerId),
     callsign: String(raw.callsign ?? DEFAULT_PROFILE.callsign),
@@ -188,6 +204,7 @@ function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
     unlockedEnvironments: unlockedRaw.length > 0 ? unlockedRaw : ['alleyway'],
     ...(authProvider ? { authProvider } : {}),
     ...(authEmail ? { authEmail } : {}),
+    ...(isAdmin ? { isAdmin: true } : {}),
   };
 }
 
@@ -925,4 +942,174 @@ export async function submitFinishedShift(
     startedAt,
     baseProfile: currentProfile,
   });
+}
+
+export const FALLBACK_TAGLINES: readonly TaglineItem[] = [
+  { id: 1, jokeText: "you're always allotted 15 minutes for a smoke break.", isActive: true, createdAt: 0 },
+  { id: 2, jokeText: "the productivity metrics are made up and the shift clock doesn't matter.", isActive: true, createdAt: 0 },
+  { id: 3, jokeText: 'OSHA is just a four-letter word we mutter by the dumpster.', isActive: true, createdAt: 0 },
+  { id: 4, jokeText: "your supervisor still thinks you're looking for a pallet jack.", isActive: true, createdAt: 0 },
+  { id: 5, jokeText: 'every drag counts as cardiovascular training on the company health plan.', isActive: true, createdAt: 0 },
+  { id: 6, jokeText: 'the cherry burns faster than your quarterly performance review.', isActive: true, createdAt: 0 },
+  { id: 7, jokeText: 'second-hand smoke is the only team-building exercise that actually works.', isActive: true, createdAt: 0 },
+  { id: 8, jokeText: "the forklift battery isn't the only thing getting smoked behind Bay 4.", isActive: true, createdAt: 0 },
+  { id: 9, jokeText: 'HR calls it time theft, but we call it spiritual alignment.', isActive: true, createdAt: 0 },
+  { id: 10, jokeText: 'the ashtray has more structural integrity than upper management.', isActive: true, createdAt: 0 },
+  { id: 11, jokeText: 'clocking back in is strictly a suggestion, not a lifestyle.', isActive: true, createdAt: 0 },
+  { id: 12, jokeText: "the loading dock breeze is the closest thing you'll get to PTO.", isActive: true, createdAt: 0 },
+];
+
+/**
+ * Formats a tagline joke as "Where <joke>" without duplicating a leading "where ".
+ */
+export function formatWhereTagline(jokeText: string): string {
+  const stripped = jokeText.trim().replace(/^where\s+/i, '');
+  return `Where ${stripped}`;
+}
+
+function buildAdminHeaders(adminPasscode?: string): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getStoredToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  if (adminPasscode && adminPasscode.trim()) {
+    headers['X-Admin-Passcode'] = adminPasscode.trim();
+  }
+  return headers;
+}
+
+export async function fetchActiveTaglines(
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<TaglineCollection> {
+  try {
+    const res = await fetchImpl(resolveApiPath('/api/v1/taglines'));
+    if (res.ok) {
+      const data = (await res.json()) as Partial<TaglineCollection>;
+      const taglines = Array.isArray(data.taglines) && data.taglines.length > 0
+        ? data.taglines
+        : [...FALLBACK_TAGLINES];
+      return {
+        cadence: data.cadence ?? '60s',
+        taglines,
+      };
+    }
+  } catch {
+    // Fallback to embedded seed taglines when offline
+  }
+  return {
+    cadence: '60s',
+    taglines: [...FALLBACK_TAGLINES],
+  };
+}
+
+export async function fetchAdminTaglines(
+  adminPasscode?: string,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{ ok: true; data: TaglineCollection } | { ok: false; error: string }> {
+  await hydrateNativeStorage();
+  try {
+    const res = await fetchImpl(resolveApiPath('/api/v1/admin/taglines'), {
+      method: 'GET',
+      headers: buildAdminHeaders(adminPasscode),
+    });
+    const payload = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      return { ok: false, error: String(payload.error ?? 'Admin authorization required') };
+    }
+    return {
+      ok: true,
+      data: {
+        cadence: (payload.cadence as TaglineCadence) ?? '60s',
+        taglines: Array.isArray(payload.taglines) ? (payload.taglines as TaglineItem[]) : [],
+      },
+    };
+  } catch {
+    return { ok: false, error: 'Unable to reach server for Admin Taglines' };
+  }
+}
+
+export async function addAdminTaglines(
+  jokeText: string,
+  adminPasscode?: string,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{ ok: true; data: TaglineCollection; addedCount: number } | { ok: false; error: string }> {
+  await hydrateNativeStorage();
+  try {
+    const res = await fetchImpl(resolveApiPath('/api/v1/admin/taglines'), {
+      method: 'POST',
+      headers: buildAdminHeaders(adminPasscode),
+      body: JSON.stringify({ jokeText }),
+    });
+    const payload = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      return { ok: false, error: String(payload.error ?? 'Failed to add taglines') };
+    }
+    return {
+      ok: true,
+      addedCount: Number(payload.addedCount ?? 1),
+      data: {
+        cadence: (payload.cadence as TaglineCadence) ?? '60s',
+        taglines: Array.isArray(payload.taglines) ? (payload.taglines as TaglineItem[]) : [],
+      },
+    };
+  } catch {
+    return { ok: false, error: 'Unable to reach server to add taglines' };
+  }
+}
+
+export async function updateAdminTagline(
+  params: { id?: number; jokeText?: string; isActive?: boolean; cadence?: TaglineCadence },
+  adminPasscode?: string,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{ ok: true; data: TaglineCollection } | { ok: false; error: string }> {
+  await hydrateNativeStorage();
+  try {
+    const res = await fetchImpl(resolveApiPath('/api/v1/admin/taglines'), {
+      method: 'PATCH',
+      headers: buildAdminHeaders(adminPasscode),
+      body: JSON.stringify(params),
+    });
+    const payload = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      return { ok: false, error: String(payload.error ?? 'Failed to update tagline') };
+    }
+    return {
+      ok: true,
+      data: {
+        cadence: (payload.cadence as TaglineCadence) ?? '60s',
+        taglines: Array.isArray(payload.taglines) ? (payload.taglines as TaglineItem[]) : [],
+      },
+    };
+  } catch {
+    return { ok: false, error: 'Unable to reach server to update tagline' };
+  }
+}
+
+export async function deleteAdminTagline(
+  id: number,
+  adminPasscode?: string,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<{ ok: true; data: TaglineCollection } | { ok: false; error: string }> {
+  await hydrateNativeStorage();
+  try {
+    const res = await fetchImpl(resolveApiPath('/api/v1/admin/taglines'), {
+      method: 'DELETE',
+      headers: buildAdminHeaders(adminPasscode),
+      body: JSON.stringify({ id }),
+    });
+    const payload = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      return { ok: false, error: String(payload.error ?? 'Failed to delete tagline') };
+    }
+    return {
+      ok: true,
+      data: {
+        cadence: (payload.cadence as TaglineCadence) ?? '60s',
+        taglines: Array.isArray(payload.taglines) ? (payload.taglines as TaglineItem[]) : [],
+      },
+    };
+  } catch {
+    return { ok: false, error: 'Unable to reach server to delete tagline' };
+  }
 }

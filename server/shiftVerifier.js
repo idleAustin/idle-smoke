@@ -129,6 +129,49 @@ export function validateCallsign(rawCallsign) {
 }
 
 /**
+ * Validates either a 2–16 char callsign OR an email address for /api/v1/auth/login.
+ * @param {unknown} rawIdentifier
+ * @returns {{ ok: true, isEmail: boolean, providerSub: string, email: string | null, callsign: string } | { ok: false, error: string }}
+ */
+export function validateLoginIdentifier(rawIdentifier) {
+  if (typeof rawIdentifier !== 'string') {
+    return { ok: false, error: 'Callsign or email must be a string' };
+  }
+  const trimmed = rawIdentifier.trim();
+  if (trimmed.includes('@')) {
+    if (trimmed.length > 128 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed)) {
+      return { ok: false, error: 'Enter a valid email address' };
+    }
+    const email = trimmed.toLowerCase();
+    const localPart = email
+      .split('@')[0]
+      .replace(/[^a-z0-9_-]/gi, '')
+      .toUpperCase()
+      .slice(0, 16);
+    const derivedCallsign = localPart.length >= 2 ? localPart : `ADMIN-${localPart || '01'}`;
+    return {
+      ok: true,
+      isEmail: true,
+      providerSub: email,
+      email,
+      callsign: derivedCallsign,
+    };
+  }
+  const callsignResult = validateCallsign(trimmed);
+  if (!callsignResult.ok) {
+    return callsignResult;
+  }
+  const normalizedCallsign = callsignResult.callsign.toUpperCase();
+  return {
+    ok: true,
+    isEmail: false,
+    providerSub: normalizedCallsign,
+    email: null,
+    callsign: normalizedCallsign,
+  };
+}
+
+/**
  * @param {unknown} rawPassword
  * @returns {{ ok: true, password: string } | { ok: false, error: string }}
  */

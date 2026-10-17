@@ -4,16 +4,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   API_SQL,
+  DEFAULT_TAGLINE_CADENCE,
+  ENSURE_DEFAULT_CADENCE_SQL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
   INSPECT_QUERIES,
+  MARK_TAGLINES_SEEDED_SQL,
+  SEED_TAGLINE_IF_INITIAL_SQL,
   SQLITE_PRAGMA_STATEMENTS,
   STAR_SCHEMA_DDL,
+  TAGLINE_SEEDS,
   UPSERT_ENVIRONMENT_DIM_SQL,
   buildDateDimRow,
   buildRejectedShiftWritePlan,
   buildVerifiedShiftWritePlan,
   formatLeaderboardResponse,
+  formatTaglineRow,
   normalizeInspectSummary,
 } from './starSchema.js';
 
@@ -49,6 +55,19 @@ function seedEnvironmentDim(db) {
 }
 
 /**
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {number} nowUnix
+ */
+function seedTaglineDim(db, nowUnix) {
+  db.prepare(ENSURE_DEFAULT_CADENCE_SQL).run(nowUnix);
+  const seedStmt = db.prepare(SEED_TAGLINE_IF_INITIAL_SQL);
+  for (const jokeText of TAGLINE_SEEDS) {
+    seedStmt.run(jokeText, nowUnix);
+  }
+  db.prepare(MARK_TAGLINES_SEEDED_SQL).run(nowUnix);
+}
+
+/**
  * @param {string} [dbPath]
  * @param {{ now?: Date | number | string }} [options]
  */
@@ -61,8 +80,11 @@ export function openSqliteDb(dbPath = process.env.SQLITE_DB_PATH || DEFAULT_SQLI
     db.exec(pragma);
   }
   db.exec(STAR_SCHEMA_DDL);
+  const nowDate = options.now ? new Date(options.now) : new Date();
+  const nowUnix = Math.floor(nowDate.getTime() / 1000);
   seedEnvironmentDim(db);
-  ensureDateDim(db, options.now ?? new Date());
+  seedTaglineDim(db, nowUnix);
+  ensureDateDim(db, nowDate);
   return db;
 }
 
@@ -215,6 +237,65 @@ export function createSqliteStore(db) {
     },
     async getLeaderboard() {
       return formatLeaderboardResponse(inspectSqliteDb(db));
+    },
+    async getActiveTaglines() {
+      const cadenceRow = db.prepare(API_SQL.selectTaglineCadence).get();
+      const cadence = String(cadenceRow?.value ?? DEFAULT_TAGLINE_CADENCE);
+      const rows = db.prepare(API_SQL.selectActiveTaglines).all();
+      return {
+        cadence,
+        taglines: rows.map(formatTaglineRow),
+      };
+    },
+    async getAllTaglines() {
+      const cadenceRow = db.prepare(API_SQL.selectTaglineCadence).get();
+      const cadence = String(cadenceRow?.value ?? DEFAULT_TAGLINE_CADENCE);
+      const rows = db.prepare(API_SQL.selectAllTaglines).all();
+      return {
+        cadence,
+        taglines: rows.map(formatTaglineRow),
+      };
+    },
+    /**
+     * @param {string[]} jokeTexts
+     * @param {number} nowUnix
+     */
+    async addTaglines(jokeTexts, nowUnix) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const stmt = db.prepare(API_SQL.insertTagline);
+        for (const text of jokeTexts) {
+          stmt.run(text, nowUnix);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {{ id: number, jokeText?: string | null, isActive?: boolean | null }} params
+     */
+    async updateTagline({ id, jokeText = null, isActive = null }) {
+      const activeInt = typeof isActive === 'boolean' ? (isActive ? 1 : 0) : null;
+      db.prepare(API_SQL.updateTaglineById).run(jokeText, activeInt, id);
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {number} id
+     */
+    async deleteTagline(id) {
+      db.prepare(API_SQL.deleteTaglineById).run(id);
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {string} cadence
+     * @param {number} nowUnix
+     */
+    async setTaglineCadence(cadence, nowUnix) {
+      db.prepare(API_SQL.upsertTaglineCadence).run(cadence, nowUnix);
+      return this.getAllTaglines();
     },
   };
 }

@@ -1,14 +1,20 @@
 import {
   API_SQL,
+  DEFAULT_TAGLINE_CADENCE,
+  ENSURE_DEFAULT_CADENCE_SQL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
   INSPECT_QUERIES,
+  MARK_TAGLINES_SEEDED_SQL,
+  SEED_TAGLINE_IF_INITIAL_SQL,
   STAR_SCHEMA_DDL,
+  TAGLINE_SEEDS,
   UPSERT_ENVIRONMENT_DIM_SQL,
   buildDateDimRow,
   buildRejectedShiftWritePlan,
   buildVerifiedShiftWritePlan,
   formatLeaderboardResponse,
+  formatTaglineRow,
   normalizeInspectSummary,
 } from './starSchema.js';
 
@@ -18,7 +24,9 @@ const D1_DDL_STATEMENTS = STAR_SCHEMA_DDL
   .filter(Boolean);
 
 export async function ensureD1Schema(d1, date = new Date()) {
-  const dateRow = buildDateDimRow(date);
+  const d = date instanceof Date ? date : new Date(date);
+  const nowUnix = Math.floor(d.getTime() / 1000);
+  const dateRow = buildDateDimRow(d);
   const statements = [
     d1.prepare('PRAGMA foreign_keys = ON'),
     ...D1_DDL_STATEMENTS.map(sql => d1.prepare(sql)),
@@ -27,6 +35,11 @@ export async function ensureD1Schema(d1, date = new Date()) {
         .prepare(UPSERT_ENVIRONMENT_DIM_SQL)
         .bind(env.id, env.name, env.sector, env.unlock_smoked_required)
     ),
+    d1.prepare(ENSURE_DEFAULT_CADENCE_SQL).bind(nowUnix),
+    ...TAGLINE_SEEDS.map(jokeText =>
+      d1.prepare(SEED_TAGLINE_IF_INITIAL_SQL).bind(jokeText, nowUnix)
+    ),
+    d1.prepare(MARK_TAGLINES_SEEDED_SQL).bind(nowUnix),
     d1
       .prepare(INSERT_DATE_DIM_SQL)
       .bind(
@@ -159,6 +172,59 @@ export function createD1Store(d1) {
     },
     async getLeaderboard() {
       return formatLeaderboardResponse(await inspectD1Db(d1));
+    },
+    async getActiveTaglines() {
+      const cadenceRow = await d1.prepare(API_SQL.selectTaglineCadence).first();
+      const cadence = String(cadenceRow?.value ?? DEFAULT_TAGLINE_CADENCE);
+      const { results: rows = [] } = await d1.prepare(API_SQL.selectActiveTaglines).all();
+      return {
+        cadence,
+        taglines: rows.map(formatTaglineRow),
+      };
+    },
+    async getAllTaglines() {
+      const cadenceRow = await d1.prepare(API_SQL.selectTaglineCadence).first();
+      const cadence = String(cadenceRow?.value ?? DEFAULT_TAGLINE_CADENCE);
+      const { results: rows = [] } = await d1.prepare(API_SQL.selectAllTaglines).all();
+      return {
+        cadence,
+        taglines: rows.map(formatTaglineRow),
+      };
+    },
+    /**
+     * @param {string[]} jokeTexts
+     * @param {number} nowUnix
+     */
+    async addTaglines(jokeTexts, nowUnix) {
+      if (jokeTexts.length > 0) {
+        await d1.batch(
+          jokeTexts.map(text => d1.prepare(API_SQL.insertTagline).bind(text, nowUnix))
+        );
+      }
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {{ id: number, jokeText?: string | null, isActive?: boolean | null }} params
+     */
+    async updateTagline({ id, jokeText = null, isActive = null }) {
+      const activeInt = typeof isActive === 'boolean' ? (isActive ? 1 : 0) : null;
+      await d1.prepare(API_SQL.updateTaglineById).bind(jokeText, activeInt, id).run();
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {number} id
+     */
+    async deleteTagline(id) {
+      await d1.prepare(API_SQL.deleteTaglineById).bind(id).run();
+      return this.getAllTaglines();
+    },
+    /**
+     * @param {string} cadence
+     * @param {number} nowUnix
+     */
+    async setTaglineCadence(cadence, nowUnix) {
+      await d1.prepare(API_SQL.upsertTaglineCadence).bind(cadence, nowUnix).run();
+      return this.getAllTaglines();
     },
   };
 }

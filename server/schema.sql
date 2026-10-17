@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS player_auth (
 CREATE INDEX IF NOT EXISTS idx_player_auth_player
     ON player_auth (player_id, provider);
 
+CREATE TABLE IF NOT EXISTS tagline_dim (
+    id         INTEGER PRIMARY KEY,
+    joke_text  TEXT    NOT NULL UNIQUE CHECK (length(joke_text) BETWEEN 3 AND 280),
+    is_active  INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT    PRIMARY KEY,
+    value      TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL
+) STRICT;
+
 INSERT INTO environment_dim (id, name, sector, unlock_smoked_required) VALUES
     ('alleyway', 'Alleyway', 'SECTOR 01 · EAST BRICK ALLEY', 0),
     ('restaurant', 'Behind a Restaurant', 'SECTOR 02 · KITCHEN SERVICE EXIT', 5),

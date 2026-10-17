@@ -120,6 +120,56 @@ CREATE TABLE IF NOT EXISTS player_auth (
 
 CREATE INDEX IF NOT EXISTS idx_player_auth_player
     ON player_auth (player_id, provider);
+
+CREATE TABLE IF NOT EXISTS tagline_dim (
+    id         INTEGER PRIMARY KEY,
+    joke_text  TEXT    NOT NULL UNIQUE CHECK (length(joke_text) BETWEEN 3 AND 280),
+    is_active  INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at INTEGER NOT NULL
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS app_config (
+    key        TEXT    PRIMARY KEY,
+    value      TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL
+) STRICT;
+`;
+
+export const DEFAULT_TAGLINE_CADENCE = '60s';
+export const VALID_TAGLINE_CADENCES = Object.freeze(['60s', '5m', '15m', '1h', 'daily', 'per_shift']);
+
+export const TAGLINE_SEEDS = Object.freeze([
+  "you're always allotted 15 minutes for a smoke break.",
+  "the productivity metrics are made up and the shift clock doesn't matter.",
+  'OSHA is just a four-letter word we mutter by the dumpster.',
+  "your supervisor still thinks you're looking for a pallet jack.",
+  'every drag counts as cardiovascular training on the company health plan.',
+  'the cherry burns faster than your quarterly performance review.',
+  'second-hand smoke is the only team-building exercise that actually works.',
+  "the forklift battery isn't the only thing getting smoked behind Bay 4.",
+  'HR calls it time theft, but we call it spiritual alignment.',
+  'the ashtray has more structural integrity than upper management.',
+  'clocking back in is strictly a suggestion, not a lifestyle.',
+  "the loading dock breeze is the closest thing you'll get to PTO.",
+]);
+
+export const SEED_TAGLINE_IF_INITIAL_SQL = `
+INSERT INTO tagline_dim (joke_text, is_active, created_at)
+SELECT ?, 1, ?
+WHERE NOT EXISTS (SELECT 1 FROM app_config WHERE key = 'taglines_seeded_v2')
+ON CONFLICT(joke_text) DO NOTHING
+`;
+
+export const MARK_TAGLINES_SEEDED_SQL = `
+INSERT INTO app_config (key, value, updated_at)
+VALUES ('taglines_seeded_v2', '1', ?)
+ON CONFLICT(key) DO NOTHING
+`;
+
+export const ENSURE_DEFAULT_CADENCE_SQL = `
+INSERT INTO app_config (key, value, updated_at)
+VALUES ('tagline_cadence', '60s', ?)
+ON CONFLICT(key) DO NOTHING
 `;
 
 export const UPSERT_ENVIRONMENT_DIM_SQL = `
@@ -358,6 +408,40 @@ export const API_SQL = Object.freeze({
       updated_at = ?
     WHERE id = ?
   `,
+  selectTaglineCadence: `
+    SELECT value FROM app_config WHERE key = 'tagline_cadence'
+  `,
+  upsertTaglineCadence: `
+    INSERT INTO app_config (key, value, updated_at)
+    VALUES ('tagline_cadence', ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `,
+  selectActiveTaglines: `
+    SELECT id, joke_text, is_active, created_at
+    FROM tagline_dim
+    WHERE is_active = 1
+    ORDER BY id ASC
+  `,
+  selectAllTaglines: `
+    SELECT id, joke_text, is_active, created_at
+    FROM tagline_dim
+    ORDER BY id DESC
+  `,
+  insertTagline: `
+    INSERT INTO tagline_dim (joke_text, is_active, created_at)
+    VALUES (?, 1, ?)
+    ON CONFLICT(joke_text) DO UPDATE SET is_active = 1
+  `,
+  updateTaglineById: `
+    UPDATE tagline_dim
+    SET joke_text = COALESCE(?, joke_text),
+        is_active = COALESCE(?, is_active)
+    WHERE id = ?
+  `,
+  deleteTaglineById: `
+    DELETE FROM tagline_dim
+    WHERE id = ?
+  `,
 });
 
 /**
@@ -433,10 +517,32 @@ export function buildRejectedShiftWritePlan(params) {
 }
 
 /**
- * @param {Record<string, unknown>} row
+ * @param {unknown} email
+ * @param {unknown} [rawAdminEmails]
  */
-export function formatPlayerProfile(row) {
+export function isEmailInAdminList(email, rawAdminEmails) {
+  if (!email || typeof email !== 'string') return false;
+  if (typeof rawAdminEmails !== 'string' || rawAdminEmails.trim().length === 0) {
+    return false;
+  }
+  const normalized = email.trim().toLowerCase();
+  const list = rawAdminEmails
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(normalized);
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ * @param {string} [rawAdminEmails]
+ */
+export function formatPlayerProfile(row, rawAdminEmails) {
   const lifetimeSmoked = Number(row.lifetime_smoked ?? 0);
+  const authProvider = row.auth_provider ? String(row.auth_provider) : undefined;
+  const authEmail = row.auth_email ? String(row.auth_email) : undefined;
+  const isAdmin =
+    Boolean(authProvider) && isEmailInAdminList(authEmail, rawAdminEmails);
   return {
     playerId: String(row.id),
     callsign: String(row.callsign),
@@ -445,8 +551,21 @@ export function formatPlayerProfile(row) {
     bestSmoked: Number(row.best_smoked ?? 0),
     shiftsCompleted: Number(row.shifts_completed ?? 0),
     unlockedEnvironments: getUnlockedEnvironments(lifetimeSmoked),
-    ...(row.auth_provider ? { authProvider: String(row.auth_provider) } : {}),
-    ...(row.auth_email ? { authEmail: String(row.auth_email) } : {}),
+    ...(authProvider ? { authProvider } : {}),
+    ...(authEmail ? { authEmail } : {}),
+    ...(isAdmin ? { isAdmin: true } : {}),
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ */
+export function formatTaglineRow(row) {
+  return {
+    id: Number(row.id),
+    jokeText: String(row.joke_text),
+    isActive: Number(row.is_active) === 1,
+    createdAt: Number(row.created_at ?? 0),
   };
 }
 

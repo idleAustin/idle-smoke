@@ -71,11 +71,15 @@ export function createNodeApiMiddleware(store) {
       ? forwardedFor[0]
       : (forwardedFor ?? req.socket?.remoteAddress ?? '127.0.0.1');
 
+    const rawPasscode = req.headers['x-admin-passcode'];
+    const adminPasscode = Array.isArray(rawPasscode) ? rawPasscode[0] : rawPasscode;
+
     const result = await handleApiRequest(
       {
         method: req.method || 'GET',
         pathname,
         authHeader: req.headers.authorization,
+        adminPasscode,
         rawBody: bodyResult.rawBody,
         contentLength: req.headers['content-length'],
         clientIp,
