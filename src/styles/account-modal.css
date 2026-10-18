@@ -241,13 +241,6 @@
   font: 600 11px var(--as-font-mono);
 }
 
-.admin-passcode-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
 .admin-cadence-select {
   padding: 7px 10px;
   border-radius: var(--as-radius-sm);

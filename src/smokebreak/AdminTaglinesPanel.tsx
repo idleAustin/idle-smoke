@@ -14,8 +14,6 @@ import {
   type TaglineItem,
 } from './shiftStorage';
 
-const ADMIN_PASSCODE_SESSION_KEY = 'smokebreak.adminPasscode';
-
 const CADENCE_OPTIONS: Array<{ value: TaglineCadence; label: string }> = [
   { value: '60s', label: 'Every 1 Minute' },
   { value: '5m', label: 'Every 5 Minutes' },
@@ -32,15 +30,6 @@ export function AdminTaglinesPanel({
   profile: PlayerProfile;
   onTaglinesUpdated?: (collection: TaglineCollection) => void;
 }) {
-  const [adminPasscode, setAdminPasscode] = useState<string>(() => {
-    try {
-      return globalThis.sessionStorage?.getItem(ADMIN_PASSCODE_SESSION_KEY) ?? '';
-    } catch {
-      return '';
-    }
-  });
-  const [passcodeInput, setPasscodeInput] = useState('');
-  const [adminUnlocked, setAdminUnlocked] = useState<boolean>(Boolean(profile.isAdmin));
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
@@ -58,18 +47,16 @@ export function AdminTaglinesPanel({
   };
 
   useEffect(() => {
-    if (!profile.isAdmin && !adminPasscode) return;
+    if (!profile.isAdmin) return;
     let cancelled = false;
     setAdminBusy(true);
     setAdminError(null);
-    void fetchAdminTaglines(adminPasscode).then(res => {
+    void fetchAdminTaglines().then(res => {
       if (cancelled) return;
       setAdminBusy(false);
       if (res.ok) {
-        setAdminUnlocked(true);
         syncAdminState(res.data, false);
       } else {
-        setAdminUnlocked(false);
         setAdminError(res.error);
       }
     });
@@ -78,33 +65,13 @@ export function AdminTaglinesPanel({
     };
   }, [profile.isAdmin]);
 
-  const submitAdminPasscode = async (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = passcodeInput.trim();
-    if (!trimmed) return;
-    setAdminBusy(true);
-    setAdminError(null);
-    const res = await fetchAdminTaglines(trimmed);
-    setAdminBusy(false);
-    if (!res.ok) {
-      setAdminError(res.error);
-      return;
-    }
-    setAdminPasscode(trimmed);
-    try {
-      globalThis.sessionStorage?.setItem(ADMIN_PASSCODE_SESSION_KEY, trimmed);
-    } catch {
-      // Ignore sessionStorage restrictions
-    }
-    setAdminUnlocked(true);
-    syncAdminState(res.data, false);
-  };
+  if (!profile.isAdmin) return null;
 
   const handleCadenceChange = async (nextCadence: TaglineCadence) => {
     setAdminBusy(true);
     setAdminError(null);
     setAdminNotice(null);
-    const res = await updateAdminTagline({ cadence: nextCadence }, adminPasscode);
+    const res = await updateAdminTagline({ cadence: nextCadence });
     setAdminBusy(false);
     if (!res.ok) {
       setAdminError(res.error);
@@ -120,7 +87,7 @@ export function AdminTaglinesPanel({
     setAdminBusy(true);
     setAdminError(null);
     setAdminNotice(null);
-    const res = await addAdminTaglines(newJokesDraft, adminPasscode);
+    const res = await addAdminTaglines(newJokesDraft);
     setAdminBusy(false);
     if (!res.ok) {
       setAdminError(res.error);
@@ -134,7 +101,7 @@ export function AdminTaglinesPanel({
   const handleToggleJoke = async (item: TaglineItem) => {
     setAdminBusy(true);
     setAdminError(null);
-    const res = await updateAdminTagline({ id: item.id, isActive: !item.isActive }, adminPasscode);
+    const res = await updateAdminTagline({ id: item.id, isActive: !item.isActive });
     setAdminBusy(false);
     if (!res.ok) {
       setAdminError(res.error);
@@ -146,7 +113,7 @@ export function AdminTaglinesPanel({
   const handleDeleteJoke = async (id: number) => {
     setAdminBusy(true);
     setAdminError(null);
-    const res = await deleteAdminTagline(id, adminPasscode);
+    const res = await deleteAdminTagline(id);
     setAdminBusy(false);
     if (!res.ok) {
       setAdminError(res.error);
@@ -169,108 +136,79 @@ export function AdminTaglinesPanel({
         </div>
       )}
 
-      {!adminUnlocked ? (
-        <form className="proto-chatgpt-row admin-passcode-form" onSubmit={submitAdminPasscode}>
-          <div style={{ flex: 1 }}>
-            <strong>Admin Tagline Database</strong>
-            <small>
-              Unlocked automatically when signed in with your Admin Google/Apple email, or
-              enter your Doppler <code>ADMIN_PASSCODE</code> below.
-            </small>
-            <div className="admin-passcode-row">
-              <input
-                type="password"
-                className="callsign-input"
-                style={{ width: 200, textTransform: 'none' }}
-                placeholder="Enter ADMIN_PASSCODE"
-                value={passcodeInput}
-                onChange={e => setPasscodeInput(e.target.value)}
-                aria-label="Admin passcode"
+      <div className="proto-chatgpt-row">
+        <div>
+          <strong>Rotation Cadence</strong>
+          <small>Controls how often the top-bar joke rotates across all players.</small>
+        </div>
+        <select
+          className="admin-cadence-select"
+          aria-label="Tagline rotation cadence"
+          value={adminCadence}
+          disabled={adminBusy}
+          onChange={e => void handleCadenceChange(e.target.value as TaglineCadence)}
+        >
+          {CADENCE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <form className="admin-add-form" onSubmit={handleAddJokes}>
+        <label htmlFor="admin-joke-textarea">
+          <strong>Add or Bulk-Import Jokes ({adminTaglines.length} in DB)</strong>
+          <small>
+            Renders as: <em>&ldquo;idleSmoke — Where &lt;your joke&gt;&rdquo;</em> (e.g. <em>&ldquo;Where you&apos;re always allotted 15 minutes for a smoke break.&rdquo;</em>). Paste 1 or up to 250 lines at once.
+          </small>
+        </label>
+        <textarea
+          id="admin-joke-textarea"
+          className="admin-joke-textarea"
+          rows={3}
+          placeholder="you're always allotted 15 minutes for a smoke break.&#10;the productivity metrics are made up and the shift clock doesn't matter."
+          value={newJokesDraft}
+          onChange={e => setNewJokesDraft(e.target.value)}
+          disabled={adminBusy}
+        />
+        <div className="admin-add-actions">
+          <button type="submit" className="ship" disabled={adminBusy || !newJokesDraft.trim()}>
+            {adminBusy ? 'Saving...' : '+ Add / Bulk Import to DB'}
+          </button>
+        </div>
+      </form>
+
+      <div className="admin-joke-list" role="region" aria-label="Tagline database list">
+        {adminTaglines.map(item => (
+          <div
+            key={item.id}
+            className={`admin-joke-row ${item.isActive ? '' : 'is-inactive'}`}
+          >
+            <span className="admin-joke-id">#{item.id}</span>
+            <span className="admin-joke-text">Where {item.jokeText.replace(/^where\s+/i, '')}</span>
+            <div className="admin-joke-btns">
+              <button
+                type="button"
+                className="proto-acct-btn-secondary"
                 disabled={adminBusy}
-              />
-              <button type="submit" className="ship" disabled={adminBusy}>
-                {adminBusy ? 'Verifying...' : 'Unlock Admin'}
-              </button>
-            </div>
-          </div>
-        </form>
-      ) : (
-        <>
-          <div className="proto-chatgpt-row">
-            <div>
-              <strong>Rotation Cadence</strong>
-              <small>Controls how often the top-bar joke rotates across all players.</small>
-            </div>
-            <select
-              className="admin-cadence-select"
-              aria-label="Tagline rotation cadence"
-              value={adminCadence}
-              disabled={adminBusy}
-              onChange={e => void handleCadenceChange(e.target.value as TaglineCadence)}
-            >
-              {CADENCE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <form className="admin-add-form" onSubmit={handleAddJokes}>
-            <label htmlFor="admin-joke-textarea">
-              <strong>Add or Bulk-Import Jokes ({adminTaglines.length} in DB)</strong>
-              <small>
-                Renders as: <em>&ldquo;idleSmoke — Where &lt;your joke&gt;&rdquo;</em> (e.g. <em>&ldquo;Where you&apos;re always allotted 15 minutes for a smoke break.&rdquo;</em>). Paste 1 or up to 250 lines at once.
-              </small>
-            </label>
-            <textarea
-              id="admin-joke-textarea"
-              className="admin-joke-textarea"
-              rows={3}
-              placeholder="you're always allotted 15 minutes for a smoke break.&#10;the productivity metrics are made up and the shift clock doesn't matter."
-              value={newJokesDraft}
-              onChange={e => setNewJokesDraft(e.target.value)}
-              disabled={adminBusy}
-            />
-            <div className="admin-add-actions">
-              <button type="submit" className="ship" disabled={adminBusy || !newJokesDraft.trim()}>
-                {adminBusy ? 'Saving...' : '+ Add / Bulk Import to DB'}
-              </button>
-            </div>
-          </form>
-
-          <div className="admin-joke-list" role="region" aria-label="Tagline database list">
-            {adminTaglines.map(item => (
-              <div
-                key={item.id}
-                className={`admin-joke-row ${item.isActive ? '' : 'is-inactive'}`}
+                onClick={() => void handleToggleJoke(item)}
               >
-                <span className="admin-joke-id">#{item.id}</span>
-                <span className="admin-joke-text">Where {item.jokeText.replace(/^where\s+/i, '')}</span>
-                <div className="admin-joke-btns">
-                  <button
-                    type="button"
-                    className="proto-acct-btn-secondary"
-                    disabled={adminBusy}
-                    onClick={() => void handleToggleJoke(item)}
-                  >
-                    {item.isActive ? 'Active' : 'Paused'}
-                  </button>
-                  <button
-                    type="button"
-                    className="proto-acct-btn-danger-outline"
-                    disabled={adminBusy}
-                    onClick={() => void handleDeleteJoke(item.id)}
-                    aria-label={`Delete tagline ${item.id}`}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            ))}
+                {item.isActive ? 'Active' : 'Paused'}
+              </button>
+              <button
+                type="button"
+                className="proto-acct-btn-danger-outline"
+                disabled={adminBusy}
+                onClick={() => void handleDeleteJoke(item.id)}
+                aria-label={`Delete tagline ${item.id}`}
+              >
+                ✕
+              </button>
+            </div>
           </div>
-        </>
-      )}
+        ))}
+      </div>
     </div>
   );
 }

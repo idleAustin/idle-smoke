@@ -103,6 +103,40 @@
   font: 700 13.5px var(--as-font-mono);
   color: var(--as-text-primary);
 }
+.hud-panel button.proto-mobbin-callsign-trigger,
+.proto-mobbin-callsign-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: var(--as-radius-sm);
+  border: 1px dashed transparent;
+  background: transparent;
+  color: var(--as-text-primary);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+.hud-panel button.proto-mobbin-callsign-trigger:hover,
+.proto-mobbin-callsign-trigger:hover {
+  background: var(--as-bg-elevated);
+  border-color: var(--as-accent-primary);
+  box-shadow: none;
+  transform: none;
+}
+.proto-mobbin-callsign-trigger:hover strong {
+  color: var(--as-accent-primary);
+}
+.proto-mobbin-edit-hint {
+  font-size: 11px;
+  color: var(--as-text-muted);
+  opacity: 0.65;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+.proto-mobbin-callsign-trigger:hover .proto-mobbin-edit-hint {
+  opacity: 1;
+  color: var(--as-accent-primary);
+}
 .proto-mobbin-user-meta small {
   font: 500 10.5px var(--as-font-mono);
   color: var(--as-text-muted);

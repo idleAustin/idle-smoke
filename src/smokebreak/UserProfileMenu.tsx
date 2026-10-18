@@ -206,13 +206,15 @@ export function AccountSettingsModal({
             >
               <span>⚙️</span> Data &amp; Account
             </button>
-            <button
-              type="button"
-              className={`proto-chatgpt-tab ${activeTab === 'admin' ? 'active' : ''}`}
-              onClick={() => setActiveTab('admin')}
-            >
-              <span>🛠️</span> Admin · Taglines
-            </button>
+            {profile.isAdmin && (
+              <button
+                type="button"
+                className={`proto-chatgpt-tab ${activeTab === 'admin' ? 'active' : ''}`}
+                onClick={() => setActiveTab('admin')}
+              >
+                <span>🛠️</span> Admin · Taglines
+              </button>
+            )}
           </nav>
 
           <div className="proto-chatgpt-pane">
@@ -228,7 +230,53 @@ export function AccountSettingsModal({
                   <div className="proto-mobbin-avatar-lg">{getInitials(profile.callsign)}</div>
                   <div className="proto-mobbin-user-meta">
                     <div className="proto-mobbin-name-row">
-                      <strong>{profile.callsign}</strong>
+                      {!editingCallsign ? (
+                        onSaveCallsign ? (
+                          <button
+                            type="button"
+                            className="proto-mobbin-callsign-trigger"
+                            title="Click to edit callsign"
+                            aria-label={`Edit callsign ${profile.callsign}`}
+                            onClick={() => {
+                              setCallsignDraft(profile.callsign);
+                              setCallsignError(null);
+                              setEditingCallsign(true);
+                            }}
+                          >
+                            <strong>{profile.callsign}</strong>
+                            <span className="proto-mobbin-edit-hint" aria-hidden="true">✎</span>
+                          </button>
+                        ) : (
+                          <strong>{profile.callsign}</strong>
+                        )
+                      ) : (
+                        <form className="callsign-form" onSubmit={submitCallsign}>
+                          <input
+                            className="callsign-input"
+                            type="text"
+                            value={callsignDraft}
+                            maxLength={16}
+                            autoFocus
+                            onChange={e => setCallsignDraft(e.target.value.toUpperCase())}
+                            aria-label="Edit operator callsign"
+                            disabled={callsignBusy}
+                          />
+                          <button type="submit" className="callsign-save-btn" disabled={callsignBusy}>
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="callsign-cancel-btn"
+                            disabled={callsignBusy}
+                            onClick={() => {
+                              setEditingCallsign(false);
+                              setCallsignError(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      )}
                       <span className="proto-mobbin-provider-tag">{providerInfo.badge}</span>
                       {profile.isAdmin && (
                         <span
@@ -239,57 +287,10 @@ export function AccountSettingsModal({
                         </span>
                       )}
                     </div>
+                    {callsignError && <span className="callsign-error">{callsignError}</span>}
                     <small>{subtitle}</small>
                   </div>
                 </div>
-
-                {onSaveCallsign && (
-                  <div className="proto-chatgpt-row">
-                    {!editingCallsign ? (
-                      <>
-                        <div>
-                          <strong>Operator Callsign</strong>
-                          <small>Displayed on global and sector leaderboards ({profile.callsign}).</small>
-                        </div>
-                        <button
-                          type="button"
-                          className="proto-acct-btn-secondary"
-                          onClick={() => {
-                            setCallsignDraft(profile.callsign);
-                            setCallsignError(null);
-                            setEditingCallsign(true);
-                          }}
-                        >
-                          Edit Callsign
-                        </button>
-                      </>
-                    ) : (
-                      <form className="callsign-form" onSubmit={submitCallsign} style={{ width: '100%' }}>
-                        <input
-                          className="callsign-input"
-                          type="text"
-                          value={callsignDraft}
-                          maxLength={16}
-                          onChange={e => setCallsignDraft(e.target.value.toUpperCase())}
-                          aria-label="Edit operator callsign"
-                          disabled={callsignBusy}
-                        />
-                        <button type="submit" className="callsign-save-btn" disabled={callsignBusy}>
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="callsign-cancel-btn"
-                          disabled={callsignBusy}
-                          onClick={() => setEditingCallsign(false)}
-                        >
-                          Cancel
-                        </button>
-                        {callsignError && <span className="callsign-error">{callsignError}</span>}
-                      </form>
-                    )}
-                  </div>
-                )}
 
                 <div className="proto-chatgpt-row">
                   <div>
@@ -374,7 +375,7 @@ export function AccountSettingsModal({
               </div>
             )}
 
-            {activeTab === 'admin' && (
+            {profile.isAdmin && activeTab === 'admin' && (
               <AdminTaglinesPanel profile={profile} onTaglinesUpdated={onTaglinesUpdated} />
             )}
           </div>
