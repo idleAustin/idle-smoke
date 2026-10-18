@@ -1,7 +1,13 @@
-// Universal account sign-in screen supporting Apple ID, Google OAuth popup flow, and callsign/email password auth.
+// Universal account sign-in screen supporting Apple ID, Google OAuth popup flow, email-first / callsign-only password auth, and account recovery.
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { ForgotPasswordPanel, OAuthIcon, RecoveryCodeBadge } from './LobbyLoginRecoveryPanel';
 import { type PlayerProfile } from './shiftStorage';
+
+function buildDemoRecoveryCode(callsign: string): string {
+  const seed = (callsign || 'OPERATOR').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(4, 'X').slice(0, 4);
+  return `RK-${seed}-84CC`;
+}
 
 interface AppleAuthWindow extends Window {
   AppleID?: {
@@ -17,13 +23,8 @@ interface AppleAuthWindow extends Window {
 
 function loadExternalScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const script = Object.assign(document.createElement('script'), { src, async: true });
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
@@ -31,14 +32,10 @@ function loadExternalScript(src: string): Promise<void> {
 }
 
 async function requestAppleIdToken(clientId: string): Promise<{ idToken: string; suggestedName?: string }> {
-  await loadExternalScript(
-    'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js'
-  );
+  await loadExternalScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
   const win = window as AppleAuthWindow;
   if (!win.AppleID?.auth) throw new Error('Apple Sign-In SDK unavailable');
-  const normalizedPath = window.location.pathname.endsWith('/')
-    ? window.location.pathname
-    : `${window.location.pathname}/`;
+  const normalizedPath = window.location.pathname.endsWith('/') ? window.location.pathname : `${window.location.pathname}/`;
   const redirectURI =
     window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
       ? 'https://idle-smoke-staging.idleaustin.workers.dev/idle-smoke/'
@@ -47,8 +44,7 @@ async function requestAppleIdToken(clientId: string): Promise<{ idToken: string;
   const response = await win.AppleID.auth.signIn();
   const idToken = response?.authorization?.id_token;
   if (!idToken) throw new Error('Apple Sign-In did not return an ID token');
-  const firstName = response?.user?.name?.firstName ?? '';
-  return { idToken, suggestedName: firstName || undefined };
+  return { idToken, suggestedName: response?.user?.name?.firstName || undefined };
 }
 
 function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
@@ -59,9 +55,7 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
         : window.location.origin;
     const normalizedPath = window.location.pathname.startsWith('/idle-smoke')
       ? '/idle-smoke/'
-      : window.location.pathname.endsWith('/')
-        ? window.location.pathname
-        : `${window.location.pathname}/`;
+      : window.location.pathname.endsWith('/') ? window.location.pathname : `${window.location.pathname}/`;
     const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
     authUrl.searchParams.set('client_id', clientId);
     authUrl.searchParams.set('redirect_uri', `${normalizedOrigin}${normalizedPath}`);
@@ -71,9 +65,7 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
     authUrl.searchParams.set('prompt', 'select_account');
 
     let settled = false;
-    const channel =
-      typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('smokebreak-oauth') : null;
-
+    const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('smokebreak-oauth') : null;
     const finish = (idToken: string | null, err: string | null) => {
       if (settled) return;
       settled = true;
@@ -99,10 +91,7 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
     }
 
     const popup = window.open(authUrl.toString(), 'smokebreak-google-oauth', 'width=500,height=640');
-    if (!popup) {
-      finish(null, 'Google Sign-In popup was blocked by the browser');
-      return;
-    }
+    if (!popup) { finish(null, 'Google Sign-In popup was blocked by the browser'); return; }
 
     const timer = window.setInterval(() => {
       try {
@@ -110,14 +99,9 @@ function requestGoogleIdTokenPopup(clientId: string): Promise<string> {
           const params = new URLSearchParams(popup.location.hash.replace(/^#/, ''));
           const idToken = params.get('id_token');
           const err = params.get('error');
-          if (idToken || err) {
-            popup.close();
-            finish(idToken, err ? `Google Sign-In error: ${err}` : null);
-          }
+          if (idToken || err) { popup.close(); finish(idToken, err ? `Google Sign-In error: ${err}` : null); }
         }
-      } catch {
-        // Cross-origin while user is on accounts.google.com; wait until redirect back to origin
-      }
+      } catch { /* cross-origin while user is on accounts.google.com */ }
     }, 250);
   });
 }
@@ -135,12 +119,16 @@ export function LoginScreen({
   onCompleteLogin: () => void;
 }) {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [username, setUsername] = useState(
-    profile.callsign.startsWith('SHIFT-') ? '' : profile.callsign
-  );
+  const [username, setUsername] = useState(profile.callsign.startsWith('SHIFT-') ? '' : profile.callsign);
   const [password, setPassword] = useState('');
+  const [callsignOnly, setCallsignOnly] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [showOfflineOption, setShowOfflineOption] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const recoveryCode = useMemo(() => buildDemoRecoveryCode(username || profile.callsign), [username, profile.callsign]);
+  const showCallsignCaveat = callsignOnly || (Boolean(username.trim()) && !username.includes('@'));
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.location.hash.includes('id_token=')) return;
@@ -150,35 +138,22 @@ export function LoginScreen({
     if (!idToken && !oauthErr) return;
 
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    const payload = {
-      type: 'smokebreak-google-oauth',
-      idToken: idToken ?? undefined,
-      error: oauthErr ?? undefined,
-    };
-
+    const payload = { type: 'smokebreak-google-oauth', idToken: idToken ?? undefined, error: oauthErr ?? undefined };
     if (typeof BroadcastChannel !== 'undefined') {
       const ch = new BroadcastChannel('smokebreak-oauth');
       ch.postMessage(payload);
       ch.close();
     }
     if (window.opener) {
-      try {
-        window.opener.postMessage(payload, window.location.origin);
-      } catch {
-        // Ignore cross-origin opener errors
-      }
+      try { window.opener.postMessage(payload, window.location.origin); } catch { /* cross-origin */ }
       window.close();
       return;
     }
-
     if (idToken && onLoginOAuth) {
       setBusy(true);
       onLoginOAuth('google', idToken)
         .then(() => { setBusy(false); onCompleteLogin(); })
-        .catch(err => {
-          setError(err instanceof Error ? err.message : 'Google Sign-In failed');
-          setBusy(false);
-        });
+        .catch(err => { setError(err instanceof Error ? err.message : 'Google Sign-In failed'); setBusy(false); });
     }
   }, [onLoginOAuth, onCompleteLogin]);
 
@@ -190,34 +165,17 @@ export function LoginScreen({
 
     if (onLoginPassword) {
       if (!clean) {
-        setError(
-          authMode === 'register'
-            ? 'Choose a callsign or enter your email address to create an account'
-            : 'Enter your callsign or email address to sign in'
-        );
+        setError(authMode === 'register' ? 'Choose a callsign or enter your email address to create an account' : 'Enter your callsign or email address to sign in');
         return;
       }
-      if (isEmail) {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(clean)) {
-          setError('Enter a valid email address');
-          return;
-        }
-      } else if (!/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) {
-        setError('Callsign must be 2–16 characters (letters, numbers, - or _)');
-        return;
-      }
+      if (isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(clean)) { setError('Enter a valid email address'); return; }
+      if (!isEmail && !/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) { setError('Callsign must be 2–16 characters (letters, numbers, - or _)'); return; }
       if (password.trim().length < 4) {
-        setError(
-          authMode === 'register'
-            ? 'Create a password of at least 4 characters'
-            : 'Enter your password (4+ characters) to sign in'
-        );
+        setError(authMode === 'register' ? 'Create a password of at least 4 characters' : 'Enter your password (4+ characters) to sign in');
         return;
       }
       setBusy(true);
-      try {
-        await onLoginPassword(clean, password, authMode);
-      } catch (err) {
+      try { await onLoginPassword(clean, password, authMode); } catch (err) {
         setError(err instanceof Error ? err.message : 'Authentication failed');
         setBusy(false);
         return;
@@ -228,14 +186,9 @@ export function LoginScreen({
     }
 
     if (clean && clean !== profile.callsign) {
-      if (!/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) {
-        setError('Callsign must be 2–16 characters (letters, numbers, - or _)');
-        return;
-      }
+      if (!/^[A-Za-z0-9 _-]{2,16}$/.test(clean)) { setError('Callsign must be 2–16 characters (letters, numbers, - or _)'); return; }
       setBusy(true);
-      try {
-        await onSaveCallsign(clean);
-      } catch (err) {
+      try { await onSaveCallsign(clean); } catch (err) {
         setError(err instanceof Error ? err.message : 'Login failed');
         setBusy(false);
         return;
@@ -247,23 +200,12 @@ export function LoginScreen({
 
   const handleOAuthClick = async (provider: 'apple' | 'google') => {
     setError(null);
-    const appleClientId =
-      typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_APPLE_CLIENT_ID as string | undefined) : undefined;
-    const googleClientId =
-      typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_GOOGLE_CLIENT_ID as string | undefined) : undefined;
+    const appleClientId = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_APPLE_CLIENT_ID as string | undefined) : undefined;
+    const googleClientId = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_GOOGLE_CLIENT_ID as string | undefined) : undefined;
 
-    if (provider === 'apple' && !appleClientId) {
-      setError('Apple Sign-In requires VITE_APPLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).');
-      return;
-    }
-    if (provider === 'google' && !googleClientId) {
-      setError('Google Sign-In requires VITE_GOOGLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).');
-      return;
-    }
-    if (!onLoginOAuth) {
-      await finishLogin(username || undefined);
-      return;
-    }
+    if (provider === 'apple' && !appleClientId) { setError('Apple Sign-In requires VITE_APPLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).'); return; }
+    if (provider === 'google' && !googleClientId) { setError('Google Sign-In requires VITE_GOOGLE_CLIENT_ID (run ./scripts/setup-oauth-wizard.sh).'); return; }
+    if (!onLoginOAuth) { await finishLogin(username || undefined); return; }
 
     setBusy(true);
     try {
@@ -282,107 +224,132 @@ export function LoginScreen({
     }
   };
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    void finishLogin();
-  };
+  const handleSubmit = (event: FormEvent) => { event.preventDefault(); void finishLogin(); };
 
   return (
     <div
-      className="proto-overlay proto-variant-a"
+      className="proto-overlay proto-login-backdrop"
       onPointerDown={e => e.stopPropagation()}
       role="dialog"
       aria-label="Sign in to Smoke Break"
     >
-      <div className="proto-a-card hud-panel">
-        <div className="proto-step-indicator">
-          <span className="active">1. SIGN IN</span><span>→</span><span>2. GAME MODE</span>
-          <span>→</span><span>3. MAP / LOBBY</span><span>→</span><span>4. SHIFT</span>
+      <section className="proto-b-sheet hud-panel">
+        <div className="proto-login-header">
+          <h2>Take fifteen.</h2>
+          <p className="proto-sub">
+            Authenticate with Apple, Google, or your email address to clock verified shifts.
+          </p>
         </div>
 
         {statusBanner && (
           <div className="proto-acct-toast" role="status">
             <span>{statusBanner}</span>
-            {onDismissBanner && (
-              <button type="button" className="proto-link-btn" onClick={onDismissBanner}>Dismiss</button>
-            )}
+            {onDismissBanner && <button type="button" className="proto-link-btn" onClick={onDismissBanner}>Dismiss</button>}
           </div>
         )}
 
-        <div className="proto-login-header">
-          <span className="eyebrow">idleMullet Universal Account · Web &amp; iOS</span>
-          <h2>Sign in to clock your shifts</h2>
-          <p className="proto-sub">
-            Sync your campaign sectors, head-to-head rating, and lifetime butts across web and mobile.
-          </p>
-        </div>
+        {forgotOpen ? (
+          <ForgotPasswordPanel profile={profile} initialIdentifier={username} onBack={() => setForgotOpen(false)} />
+        ) : (
+          <>
+            <div className="proto-b-sso-grid">
+              <button type="button" className="proto-sso-btn apple" disabled={busy} onClick={() => void handleOAuthClick('apple')}>
+                <OAuthIcon provider="apple" /> Apple
+              </button>
+              <button type="button" className="proto-sso-btn google" disabled={busy} onClick={() => void handleOAuthClick('google')}>
+                <OAuthIcon provider="google" /> Google
+              </button>
+            </div>
 
-        <div className="proto-sso-stack">
-          <button type="button" className="proto-sso-btn apple" disabled={busy} onClick={() => void handleOAuthClick('apple')}>
-            <span></span> Continue with Apple
-          </button>
-          <button type="button" className="proto-sso-btn google" disabled={busy} onClick={() => void handleOAuthClick('google')}>
-            <span>G</span> Continue with Google
-          </button>
-        </div>
+            <div className="proto-divider"><span>OR EMAIL &amp; PASSWORD</span></div>
 
-        <div className="proto-divider">
-          <span>OR USE CALLSIGN / EMAIL &amp; PASSWORD</span>
-        </div>
+            <div className="proto-b-drawer">
+              <div className="proto-auth-tabs" role="tablist" aria-label="Account authentication mode">
+                <button
+                  type="button" role="tab" aria-selected={authMode === 'login'}
+                  className={`proto-auth-tab${authMode === 'login' ? ' active' : ''}`}
+                  onClick={() => { setAuthMode('login'); setError(null); }}
+                >
+                  Returning · Sign In
+                </button>
+                <button
+                  type="button" role="tab" aria-selected={authMode === 'register'}
+                  className={`proto-auth-tab${authMode === 'register' ? ' active' : ''}`}
+                  onClick={() => { setAuthMode('register'); setError(null); }}
+                >
+                  New Hire · Create Account
+                </button>
+              </div>
 
-        <div className="proto-auth-tabs" role="tablist" aria-label="Account authentication mode">
+              <form className="proto-login-form" onSubmit={handleSubmit}>
+                <label className="proto-field-label">
+                  <div className="proto-label-row">
+                    <span>{showCallsignCaveat ? 'CALLSIGN ONLY (NO EMAIL)' : 'EMAIL ADDRESS (GUARANTEED RECOVERY)'}</span>
+                    <button
+                      type="button" className="proto-inline-switch-btn"
+                      onClick={() => { setCallsignOnly(prev => !prev); setError(null); }}
+                    >
+                      {showCallsignCaveat ? 'Use Email Instead (Recommended)' : 'Prefer Callsign-only (no email)?'}
+                    </button>
+                  </div>
+                  <input
+                    type="text" aria-label="Login callsign" value={username} maxLength={120}
+                    onChange={e => setUsername(e.target.value)}
+                    placeholder={showCallsignCaveat ? 'ASH-KING' : 'you@email.com'}
+                  />
+                </label>
+
+                {showCallsignCaveat && (
+                  <div className="proto-callsign-caveat" role="note">
+                    <strong>NO EMAIL · RECOVERY NOT GUARANTEED</strong>
+                    <p>
+                      If you lose this recovery code and are not on your original browser, we cannot guarantee you&apos;ll be able to log back in.
+                    </p>
+                    <RecoveryCodeBadge code={recoveryCode} />
+                  </div>
+                )}
+
+                <label className="proto-field-label">
+                  <div className="proto-label-row">
+                    <span>{authMode === 'register' ? 'CREATE PASSWORD (4+ CHARS)' : 'PASSWORD'}</span>
+                    <button type="button" className="proto-inline-switch-btn" onClick={() => setForgotOpen(true)}>
+                      Forgot password?
+                    </button>
+                  </div>
+                  <input
+                    type="password" aria-label="Login password" value={password}
+                    onChange={e => setPassword(e.target.value)} placeholder="••••••••"
+                  />
+                </label>
+                {error && <span className="proto-error" role="alert">{error}</span>}
+                <button type="submit" className="ship proto-cta-primary" disabled={busy}>
+                  {busy
+                    ? authMode === 'register' ? 'Creating account...' : 'Signing in...'
+                    : authMode === 'register' ? 'Create Account & Choose Game Mode →' : 'Sign In & Choose Game Mode →'}
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+
+        <div className="proto-d-subfooter">
           <button
-            type="button" role="tab" aria-selected={authMode === 'login'}
-            className={`proto-auth-tab${authMode === 'login' ? ' active' : ''}`}
-            onClick={() => { setAuthMode('login'); setError(null); }}
+            type="button" className="proto-guest-muted-link"
+            aria-expanded={showOfflineOption} onClick={() => setShowOfflineOption(prev => !prev)}
           >
-            Returning · Sign In
+            <span>Need a temporary offline badge?</span>
+            <span aria-hidden="true">{showOfflineOption ? '▴' : '▾'}</span>
           </button>
-          <button
-            type="button" role="tab" aria-selected={authMode === 'register'}
-            className={`proto-auth-tab${authMode === 'register' ? ' active' : ''}`}
-            onClick={() => { setAuthMode('register'); setError(null); }}
-          >
-            New Hire · Create Account
-          </button>
+          {showOfflineOption && (
+            <div className="proto-d-offline-reveal">
+              <small>Temporary badges do not sync progress across devices.</small>
+              <button type="button" className="proto-guest-ghost-btn" disabled={busy} onClick={onCompleteLogin}>
+                Clock a single unsynced shift as {profile.callsign} →
+              </button>
+            </div>
+          )}
         </div>
-
-        <form className="proto-login-form" onSubmit={handleSubmit}>
-          <label className="proto-field-label">
-            <span>{authMode === 'register' ? 'CHOOSE CALLSIGN OR EMAIL' : 'CALLSIGN OR EMAIL'}</span>
-            <input
-              type="text" aria-label="Login callsign" value={username} maxLength={120}
-              onChange={e => setUsername(e.target.value)}
-              placeholder={
-                authMode === 'register'
-                  ? 'ASH-KING or you@email.com'
-                  : `${profile.callsign} or you@email.com`
-              }
-            />
-          </label>
-          <label className="proto-field-label">
-            <span>{authMode === 'register' ? 'CREATE PASSWORD (4+ CHARS)' : 'PASSWORD'}</span>
-            <input
-              type="password" aria-label="Login password" value={password}
-              onChange={e => setPassword(e.target.value)} placeholder="••••••••"
-            />
-          </label>
-          {error && <span className="proto-error" role="alert">{error}</span>}
-          <button type="submit" className="ship proto-cta-primary" disabled={busy}>
-            {busy
-              ? authMode === 'register' ? 'Creating account...' : 'Signing in...'
-              : authMode === 'register'
-                ? 'Create Account & Choose Game Mode →'
-                : 'Sign In & Choose Game Mode →'}
-          </button>
-        </form>
-
-        <div className="proto-login-footer">
-          <button type="button" className="proto-link-btn" onClick={onCompleteLogin}>
-            Continue as Guest ({profile.callsign}) →
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

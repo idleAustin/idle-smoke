@@ -1,4 +1,4 @@
-/* Pre-shift lobby overlay container, step indicator, OAuth SSO stack, auth tabs, and login form styles. */
+/* Pre-shift lobby overlay container, step indicator, OAuth SSO stack, auth tabs, login form, callsign caveat, and recovery panel styles. */
 /* ========================================================
    Smoke Break Lobby — Login, 3-Card Modes, Map & 1v1 Duel
    ======================================================== */
@@ -10,65 +10,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background: radial-gradient(circle at 50% 35%, rgba(10, 10, 12, 0.45), rgba(10, 10, 12, 0.88));
+  padding: calc(20px + var(--safe-area-top)) calc(20px + var(--safe-area-right)) calc(20px + var(--safe-area-bottom)) calc(20px + var(--safe-area-left));
+  background: radial-gradient(
+    circle at 50% 35%,
+    color-mix(in srgb, var(--as-bg-base) 45%, transparent),
+    color-mix(in srgb, var(--as-bg-base) 88%, transparent)
+  );
   backdrop-filter: blur(8px);
   overflow-y: auto;
 }
 
-.proto-chip {
-  padding: 3px 8px;
-  border-radius: var(--as-radius-pill);
-  border: 1px solid rgba(132, 204, 22, 0.35);
-  background: var(--as-accent-muted);
-  color: var(--as-accent-primary);
-  font: 600 10px var(--as-font-mono);
-  letter-spacing: 0.08em;
+.proto-overlay.proto-login-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  background: var(--as-bg-base);
+  backdrop-filter: none;
 }
 
-.proto-pill-tag {
-  padding: 2px 6px;
-  border-radius: var(--as-radius-sm);
-  background: var(--as-accent-primary);
-  color: var(--as-accent-text);
-  font: 800 9px var(--as-font-mono);
-  letter-spacing: 0.08em;
-}
-
-.proto-sub {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--as-text-secondary);
-  line-height: 1.45;
-}
-
-.proto-link-btn {
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--as-accent-primary);
-  font: 600 11px var(--as-font-mono);
-  cursor: pointer;
-}
-
-.proto-link-btn:hover {
-  text-decoration: underline;
-}
-
-.proto-valid {
-  color: var(--as-accent-primary);
-  font: 500 11px var(--as-font-mono);
-}
-
-.proto-error {
-  color: var(--as-status-error);
-  font: 500 11px var(--as-font-mono);
-}
-
-.proto-id-hint {
-  font: 500 10px var(--as-font-mono);
-  color: var(--as-text-muted);
-}
+.proto-chip { padding: 3px 8px; border-radius: var(--as-radius-pill); border: 1px solid var(--as-accent-glow); background: var(--as-accent-muted); color: var(--as-accent-primary); font: 600 10px var(--as-font-mono); letter-spacing: 0.08em; }
+.proto-pill-tag { padding: 2px 6px; border-radius: var(--as-radius-sm); background: var(--as-accent-primary); color: var(--as-accent-text); font: 800 9px var(--as-font-mono); letter-spacing: 0.08em; }
+.proto-sub { margin: 4px 0 0; font-size: 13px; color: var(--as-text-secondary); line-height: 1.45; }
+.proto-link-btn { background: none; border: 0; padding: 0; color: var(--as-accent-primary); font: 600 11px var(--as-font-mono); cursor: pointer; }
+.proto-link-btn:hover { text-decoration: underline; }
+.proto-valid { color: var(--as-accent-primary); font: 500 11px var(--as-font-mono); }
+.proto-error { color: var(--as-status-error); font: 500 11px var(--as-font-mono); }
+.proto-id-hint { font: 500 10px var(--as-font-mono); color: var(--as-text-muted); }
 
 .proto-cta-primary {
   width: 100%;
@@ -79,14 +48,14 @@
   letter-spacing: 0.01em;
 }
 
-.proto-a-card {
+.proto-b-sheet {
   width: min(460px, 100%);
-  padding: 22px;
+  padding: 22px 24px;
   display: grid;
-  gap: 16px;
-  background: rgba(18, 18, 22, 0.94);
+  gap: 14px;
+  border-radius: var(--as-radius-lg);
+  background: var(--as-bg-surface);
   border: 1px solid var(--as-border-strong);
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(132, 204, 22, 0.14);
 }
 
 .proto-step-indicator {
@@ -99,19 +68,9 @@
   letter-spacing: 0.08em;
 }
 
-.proto-step-indicator .active {
-  color: var(--as-accent-primary);
-}
-
-.proto-login-header h2 {
-  margin: 4px 0 0;
-  font-size: 22px;
-}
-
-.proto-sso-stack {
-  display: grid;
-  gap: 8px;
-}
+.proto-step-indicator .active { color: var(--as-accent-primary); }
+.proto-login-header h2 { margin: 0; font-size: 24px; }
+.proto-b-sso-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .proto-sso-btn {
   display: flex;
@@ -130,14 +89,12 @@
 }
 
 .proto-sso-btn.apple {
-  background: #f4f4f5;
-  color: #0a0a0c;
-  border-color: #f4f4f5;
+  background: var(--as-text-primary);
+  color: var(--as-bg-base);
+  border-color: var(--as-text-primary);
 }
 
-.proto-sso-btn:hover {
-  border-color: var(--as-accent-primary);
-}
+.proto-sso-btn:hover { border-color: var(--as-accent-primary); }
 
 .proto-divider {
   display: flex;
@@ -149,12 +106,9 @@
 }
 
 .proto-divider::before,
-.proto-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--as-border-subtle);
-}
+.proto-divider::after { content: ''; flex: 1; height: 1px; background: var(--as-border-subtle); }
+
+.proto-b-drawer { display: grid; gap: 12px; }
 
 .proto-auth-tabs {
   display: grid;
@@ -178,30 +132,34 @@
   transition: all var(--as-duration-fast);
 }
 
-.proto-auth-tab:hover {
-  color: var(--as-text-primary);
+.proto-auth-tab:hover { color: var(--as-text-primary); }
+.proto-auth-tab.active { background: var(--as-accent-muted); border-color: var(--as-accent-primary); color: var(--as-accent-primary); }
+.proto-login-form { display: grid; gap: 10px; }
+.proto-field-label { display: grid; gap: 5px; }
+.proto-field-label span { font: 600 10px var(--as-font-mono); color: var(--as-text-secondary); letter-spacing: 0.08em; }
+
+.proto-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.proto-auth-tab.active {
-  background: var(--as-accent-muted);
-  border-color: rgba(132, 204, 22, 0.4);
-  color: var(--as-accent-primary);
+.proto-inline-switch-btn {
+  background: none !important;
+  border: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  color: var(--as-accent-primary) !important;
+  font: 600 10.5px var(--as-font-mono) !important;
+  cursor: pointer;
 }
 
-.proto-login-form {
-  display: grid;
-  gap: 10px;
-}
-
-.proto-field-label {
-  display: grid;
-  gap: 5px;
-}
-
-.proto-field-label span {
-  font: 600 10px var(--as-font-mono);
-  color: var(--as-text-secondary);
-  letter-spacing: 0.08em;
+.proto-inline-switch-btn:hover {
+  text-decoration: underline;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 .proto-field-label input {
@@ -214,22 +172,135 @@
   outline: none;
 }
 
-.proto-field-label input:focus {
-  border-color: var(--as-accent-primary);
-  box-shadow: 0 0 0 2px var(--as-accent-muted);
+.proto-field-label input:focus { border-color: var(--as-accent-primary); box-shadow: 0 0 0 2px var(--as-accent-muted); }
+
+/* Callsign-Only Caveat, Recovery Code Badge & Forgot Password Panel */
+.proto-callsign-caveat {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-status-warning-bg);
+  border: 1px solid var(--as-status-warning);
+  text-align: left;
 }
 
-.proto-login-footer {
-  text-align: center;
-  padding-top: 6px;
+.proto-callsign-caveat strong {
+  font: 700 10px var(--as-font-mono);
+  color: var(--as-status-warning);
+  letter-spacing: 0.06em;
+}
+
+.proto-callsign-caveat p {
+  margin: 0;
+  font: 500 11.5px/1.4 var(--as-font-body);
+  color: var(--as-text-primary);
+}
+
+.proto-recovery-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-strong);
+}
+
+.proto-recovery-code {
+  font: 700 12.5px var(--as-font-mono);
+  color: var(--as-accent-primary);
+  letter-spacing: 0.08em;
+}
+
+.proto-copy-code-btn {
+  padding: 4px 8px !important;
+  min-height: 0 !important;
+  font: 600 10px var(--as-font-mono) !important;
+}
+
+.proto-forgot-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--as-radius-md);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-strong);
+}
+
+.proto-forgot-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.proto-forgot-head h3 { margin: 2px 0 0; font-size: 16px; }
+
+.proto-recovery-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+}
+
+.proto-d-subfooter {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--as-border-subtle);
 }
 
-.proto-a-spot-pills {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.proto-guest-muted-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
+  background: none !important;
+  border: 0 !important;
+  padding: 2px 4px !important;
+  min-height: 0 !important;
+  color: var(--as-text-muted) !important;
+  font: 500 11px var(--as-font-mono) !important;
+  cursor: pointer;
 }
+
+.proto-guest-muted-link:hover {
+  color: var(--as-text-secondary) !important;
+  text-decoration: underline;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.proto-d-offline-reveal {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  text-align: center;
+}
+
+.proto-d-offline-reveal small { font: 500 10.5px var(--as-font-mono); color: var(--as-text-muted); }
+
+.proto-guest-ghost-btn {
+  width: 100%;
+  padding: 7px 10px !important;
+  min-height: 0 !important;
+  border: 1px dashed var(--as-border-subtle) !important;
+  background: transparent !important;
+  color: var(--as-text-muted) !important;
+  font: 500 11px var(--as-font-mono) !important;
+}
+
+.proto-a-spot-pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 
 .proto-spot-pill {
   display: flex;
@@ -246,20 +317,9 @@
   text-align: left;
 }
 
-.proto-spot-pill.active {
-  border-color: var(--as-accent-primary);
-  background: var(--as-accent-muted);
-}
-
-.proto-spot-pill.locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.proto-spot-pill small {
-  font: 500 10px var(--as-font-mono);
-  color: var(--as-text-muted);
-}
+.proto-spot-pill.active { border-color: var(--as-accent-primary); background: var(--as-accent-muted); }
+.proto-spot-pill.locked { opacity: 0.45; cursor: not-allowed; }
+.proto-spot-pill small { font: 500 10px var(--as-font-mono); color: var(--as-text-muted); }
 
 .proto-a-stats-row {
   display: grid;
@@ -271,13 +331,5 @@
   border: 1px solid var(--as-border-subtle);
 }
 
-.proto-a-stats-row span {
-  display: block;
-  font: 600 9px var(--as-font-mono);
-  color: var(--as-text-muted);
-}
-
-.proto-a-stats-row strong {
-  font: 700 13px var(--as-font-mono);
-  color: var(--as-text-primary);
-}
+.proto-a-stats-row span { display: block; font: 600 9px var(--as-font-mono); color: var(--as-text-muted); }
+.proto-a-stats-row strong { font: 700 13px var(--as-font-mono); color: var(--as-text-primary); }
