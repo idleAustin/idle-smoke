@@ -3,12 +3,10 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  API_SQL,
   DEFAULT_TAGLINE_CADENCE,
   ENSURE_DEFAULT_CADENCE_SQL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
-  INSPECT_QUERIES,
   MARK_TAGLINES_SEEDED_SQL,
   SEED_TAGLINE_IF_INITIAL_SQL,
   SQLITE_PRAGMA_STATEMENTS,
@@ -16,12 +14,16 @@ import {
   TAGLINE_SEEDS,
   UPSERT_ENVIRONMENT_DIM_SQL,
   buildDateDimRow,
+} from './starSchema.js';
+import {
+  API_SQL,
+  INSPECT_QUERIES,
   buildRejectedShiftWritePlan,
   buildVerifiedShiftWritePlan,
   formatLeaderboardResponse,
   formatTaglineRow,
   normalizeInspectSummary,
-} from './starSchema.js';
+} from './storeQueries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

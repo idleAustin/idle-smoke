@@ -1,22 +1,24 @@
 import {
-  API_SQL,
   DEFAULT_TAGLINE_CADENCE,
   ENSURE_DEFAULT_CADENCE_SQL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
-  INSPECT_QUERIES,
   MARK_TAGLINES_SEEDED_SQL,
   SEED_TAGLINE_IF_INITIAL_SQL,
   STAR_SCHEMA_DDL,
   TAGLINE_SEEDS,
   UPSERT_ENVIRONMENT_DIM_SQL,
   buildDateDimRow,
+} from './starSchema.js';
+import {
+  API_SQL,
+  INSPECT_QUERIES,
   buildRejectedShiftWritePlan,
   buildVerifiedShiftWritePlan,
   formatLeaderboardResponse,
   formatTaglineRow,
   normalizeInspectSummary,
-} from './starSchema.js';
+} from './storeQueries.js';
 
 const D1_DDL_STATEMENTS = STAR_SCHEMA_DDL
   .split(';')

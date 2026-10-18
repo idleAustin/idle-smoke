@@ -12,9 +12,9 @@ import {
 import {
   UNLOCK_THRESHOLDS,
   buildDateDimRow,
-  formatInspectReport,
   getUnlockedEnvironments,
 } from '../../server/starSchema.js';
+import { formatInspectReport } from '../../server/storeQueries.js';
 import { ensureD1Schema, inspectD1Db } from '../../server/d1Schema.js';
 
 describe('SQLite Star Schema & DB Inspector', () => {

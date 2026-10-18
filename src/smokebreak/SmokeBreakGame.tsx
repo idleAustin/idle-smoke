@@ -1,60 +1,39 @@
+// Top-level Smoke Break game controller managing shift state, 3D scene lifecycle, input handlers, and HUD/lobby overlays.
+
 import { useEffect, useReducer, useRef, useState, type PointerEvent } from 'react';
 import { isNativeMobile, triggerDragHaptic } from '../platform';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
-  FALLBACK_TAGLINES,
-  bootstrapPlayerSession,
-  deletePlayerAccount,
-  fetchActiveTaglines,
-  flushPendingShifts,
-  formatWhereTagline,
-  getCachedLeaderboard,
-  getCachedPlayerProfile,
-  loginWithOAuth,
-  loginWithPassword,
-  resolveShiftEnvironment,
-  signOutPlayerSession,
-  startShiftSession,
-  submitFinishedShift,
-  updatePlayerCallsign,
-  type LeaderboardEntry,
-  type LeaderboardResponse,
-  type PlayerProfile,
-  type ShiftFinishResult,
-  type StartedShiftSession,
-  type TaglineCadence,
-  type TaglineItem,
+  FALLBACK_TAGLINES, deletePlayerAccount, fetchActiveTaglines,
+  loginWithOAuth, loginWithPassword, signOutPlayerSession, updatePlayerCallsign,
+} from './accountClient';
+import {
+  bootstrapPlayerSession, flushPendingShifts, startShiftSession, submitFinishedShift,
 } from './shiftClient';
 import {
-  BREAK_MS,
-  PRESSES_PER_CIGARETTE,
-  freshShiftSession,
-  isEditableEventTarget,
-  projectShiftProgression,
-  recordShiftDrag,
-  remainingMs,
-} from './smokeBreak';
-import { BreakReportDialog } from './SmokeBreakHud';
+  getCachedLeaderboard, getCachedPlayerProfile, resolveShiftEnvironment,
+  type LeaderboardEntry, type LeaderboardResponse, type PlayerProfile,
+  type ShiftFinishResult, type StartedShiftSession, type TaglineCadence, type TaglineItem,
+} from './shiftStorage';
 import {
-  SmokeBreakLobby,
-  type GameModeId,
-  type LobbyStep,
-  type RivalOpponent,
+  PRESSES_PER_CIGARETTE, freshShiftSession, isEditableEventTarget,
+  projectShiftProgression, recordShiftDrag, remainingMs,
+} from './smokeBreak';
+import {
+  BreakReportDialog, SmokeBriefPanel, SmokeCommandHeader, SmokeTallyPanel,
+} from './SmokeBreakHud';
+import {
+  SmokeBreakLobby, type GameModeId, type LobbyStep, type RivalOpponent,
 } from './SmokeBreakLobby';
 import { SmokeBreakScene } from './SmokeBreakScene';
-import { AccountSettingsModal, UserCircleTrigger } from './UserProfileMenu';
+import { AccountSettingsModal } from './UserProfileMenu';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
 export function SmokeBreakGame({
-  finish,
-  environmentId: controlledEnvId,
-  onEnvironmentChange,
-  lobbyStep: controlledLobbyStep,
-  onLobbyStepChange,
-  gameMode: controlledGameMode,
-  onGameModeChange,
-  selectedRival: controlledRival,
-  onSelectRival: onControlledRivalChange,
+  finish, environmentId: controlledEnvId, onEnvironmentChange,
+  lobbyStep: controlledLobbyStep, onLobbyStepChange,
+  gameMode: controlledGameMode, onGameModeChange,
+  selectedRival: controlledRival, onSelectRival: onControlledRivalChange,
 }: {
   finish(): void;
   environmentId?: EnvironmentId;
@@ -106,15 +85,12 @@ export function SmokeBreakGame({
     setAccountBusy(true);
     setAccountError(null);
     try {
-      const { previousCallsign, profile: freshGuest, leaderboard: board } =
-        await signOutPlayerSession();
+      const { previousCallsign, profile: freshGuest, leaderboard: board } = await signOutPlayerSession();
       setProfile(freshGuest);
       setLeaderboard(board);
       setIsQuickCardOpen(false);
       setIsSettingsModalOpen(false);
-      setStatusBanner(
-        `✓ Signed out of ${previousCallsign} on this device. Your cloud account remains intact.`
-      );
+      setStatusBanner(`✓ Signed out of ${previousCallsign} on this device. Your cloud account remains intact.`);
       setLobbyStep('login');
     } catch (err) {
       setAccountError(err instanceof Error ? err.message : 'Failed to sign out');
@@ -127,15 +103,12 @@ export function SmokeBreakGame({
     setAccountBusy(true);
     setAccountError(null);
     try {
-      const { deletedCallsign, profile: freshGuest, leaderboard: board } =
-        await deletePlayerAccount();
+      const { deletedCallsign, profile: freshGuest, leaderboard: board } = await deletePlayerAccount();
       setProfile(freshGuest);
       setLeaderboard(board);
       setIsQuickCardOpen(false);
       setIsSettingsModalOpen(false);
-      setStatusBanner(
-        `🗑️ Permanently deleted account ${deletedCallsign} and all associated shifts.`
-      );
+      setStatusBanner(`🗑️ Permanently deleted account ${deletedCallsign} and all associated shifts.`);
       setLobbyStep('login');
     } catch (err) {
       setAccountError(err instanceof Error ? err.message : 'Failed to delete account');
@@ -154,8 +127,7 @@ export function SmokeBreakGame({
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<SmokeBreakScene>();
   const drag = () => {
-    if (isLobbyOpenRef.current) return;
-    if (!doneRef.current) dispatch(performance.now());
+    if (!isLobbyOpenRef.current && !doneRef.current) dispatch(performance.now());
   };
   /** Touch devices tap anywhere on the screen; every finger that lands is a drag. */
   const [touch] = useState(() => isNativeMobile() || window.matchMedia('(pointer: coarse)').matches);
@@ -166,9 +138,7 @@ export function SmokeBreakGame({
       (event.target as Element).closest(
         'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay, .proto-avatar-anchor, .proto-discord-card, .proto-chatgpt-modal'
       )
-    ) {
-      return;
-    }
+    ) return;
     if ((event.pointerType === 'touch' || isNativeMobile()) && !doneRef.current) {
       void triggerDragHaptic();
     }
@@ -196,8 +166,7 @@ export function SmokeBreakGame({
       setTaglines(collection.taglines);
       setTaglineCadence(collection.cadence);
       if (collection.cadence === 'daily') {
-        const dayIndex = Math.floor(Date.now() / 86_400_000) % collection.taglines.length;
-        setActiveJokeIndex(dayIndex);
+        setActiveJokeIndex(Math.floor(Date.now() / 86_400_000) % collection.taglines.length);
       } else {
         setActiveJokeIndex(Math.floor(Math.random() * collection.taglines.length));
       }
@@ -219,28 +188,20 @@ export function SmokeBreakGame({
   useEffect(() => {
     if (taglines.length <= 1) return;
     if (taglineCadence === 'daily') {
-      const dayIndex = Math.floor(Date.now() / 86_400_000) % taglines.length;
-      setActiveJokeIndex(dayIndex);
+      setActiveJokeIndex(Math.floor(Date.now() / 86_400_000) % taglines.length);
       return;
     }
-    if (taglineCadence === 'per_shift') {
-      return;
-    }
+    if (taglineCadence === 'per_shift') return;
     const intervalMs =
-      taglineCadence === '5m'
-        ? 300_000
-        : taglineCadence === '15m'
-          ? 900_000
-          : taglineCadence === '1h'
-            ? 3_600_000
-            : 60_000;
+      taglineCadence === '5m' ? 300_000
+      : taglineCadence === '15m' ? 900_000
+      : taglineCadence === '1h' ? 3_600_000
+      : 60_000;
     const timerId = setInterval(() => {
       setActiveJokeIndex(prev => {
         if (taglines.length <= 1) return 0;
         let next = Math.floor(Math.random() * taglines.length);
-        if (next === prev) {
-          next = (prev + 1) % taglines.length;
-        }
+        if (next === prev) next = (prev + 1) % taglines.length;
         return next;
       });
     }, intervalMs);
@@ -280,14 +241,11 @@ export function SmokeBreakGame({
     try {
       scene.current = new SmokeBreakScene(host.current!);
       scene.current.setEnvironmentLighting(env.lighting);
-    }
-    catch { setError(true); }
+    } catch { setError(true); }
     return () => { scene.current?.dispose(); scene.current = undefined; };
   }, []);
 
-  useEffect(() => {
-    scene.current?.setEnvironmentLighting(env.lighting);
-  }, [env]);
+  useEffect(() => { scene.current?.setEnvironmentLighting(env.lighting); }, [env]);
 
   // Every press is a drag; the press that finishes a cigarette stubs it out and lights the next.
   const last = useRef(state);
@@ -301,10 +259,7 @@ export function SmokeBreakGame({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (isEditableEventTarget(event.target)) {
-        return;
-      }
-      if (event.code !== 'Space') return;
+      if (isEditableEventTarget(event.target) || event.code !== 'Space') return;
       event.preventDefault();
       if (!event.repeat) drag();
     };
@@ -322,195 +277,113 @@ export function SmokeBreakGame({
   const seconds = Math.ceil(remaining / 1000);
 
   const projected = projectShiftProgression(
-    profile.lifetimeSmoked,
-    profile.bestSmoked,
-    profile.unlockedEnvironments,
-    done ? state.smoked : 0
+    profile.lifetimeSmoked, profile.bestSmoked, profile.unlockedEnvironments, done ? state.smoked : 0
   );
   const hasResolvedShift = shiftResult !== null;
   const reportSmoked = hasResolvedShift ? shiftResult.smoked : state.smoked;
-  const reportLifetimeSmoked = hasResolvedShift
-    ? shiftResult.profile.lifetimeSmoked
-    : projected.lifetimeSmoked;
+  const reportLifetimeSmoked = hasResolvedShift ? shiftResult.profile.lifetimeSmoked : projected.lifetimeSmoked;
   const reportBestSmoked = hasResolvedShift ? shiftResult.profile.bestSmoked : projected.bestSmoked;
   const reportUnlockedEnvironments = hasResolvedShift
-    ? shiftResult.profile.unlockedEnvironments
-    : projected.unlockedEnvironments;
+    ? shiftResult.profile.unlockedEnvironments : projected.unlockedEnvironments;
   const reportNewlyUnlocked = hasResolvedShift
-    ? shiftResult.newlyUnlockedEnvironments
-    : projected.newlyUnlockedEnvironments;
+    ? shiftResult.newlyUnlockedEnvironments : projected.newlyUnlockedEnvironments;
   const verifiedEnv = getEnvironment(resolveShiftEnvironment(env.id, profile.unlockedEnvironments));
 
   const leaderboardEntries: LeaderboardEntry[] =
     leaderboard.entries.length > 0
       ? leaderboard.entries
       : done
-        ? [
-            {
-              rank: 1,
-              callsign: profile.callsign,
-              smoked: reportSmoked,
-              environmentId: verifiedEnv.id,
-              completedAt: 0,
-            },
-          ]
+        ? [{ rank: 1, callsign: profile.callsign, smoked: reportSmoked, environmentId: verifiedEnv.id, completedAt: 0 }]
         : [];
 
   const activeTagline = taglines[activeJokeIndex % Math.max(1, taglines.length)] ?? FALLBACK_TAGLINES[0];
 
-  return <main className="smoke-break" aria-label="Smoke break" onPointerDown={tap}>
-    <header className="hud-command hud-panel" onPointerDown={e => e.stopPropagation()}>
-      <div className="hud-brand">
-        <span className="eyebrow">idleSmoke · {env.sector}</span>
-        <strong className="hud-tagline">
-          <span className="hud-tagline-brand">idleSmoke</span>
-          <span className="hud-tagline-copy">
-            {' — '}{formatWhereTagline(activeTagline.jokeText)}
-          </span>
-        </strong>
-      </div>
-      <div className="hud-right-group">
-        <div className={`shift-clock ${done ? 'complete' : 'running'}`} role="timer" aria-label="Smoke break time remaining">0:{String(seconds).padStart(2, '0')}</div>
-        <UserCircleTrigger
-          profile={profile}
-          isQuickCardOpen={isQuickCardOpen}
-          isSettingsModalOpen={isSettingsModalOpen}
-          busy={accountBusy}
-          showChangeModeAction={lobbyStep === 'game' && state.startedAt === undefined}
-          onToggleQuickCard={() => {
-            if (isSettingsModalOpen) {
-              setIsSettingsModalOpen(false);
-            } else {
-              setIsQuickCardOpen(open => !open);
-            }
-          }}
-          onOpenSettingsModal={() => {
-            setIsQuickCardOpen(false);
-            setAccountError(null);
-            setIsSettingsModalOpen(true);
-          }}
-          onChangeMode={() => setLobbyStep('modes')}
-          onSignOut={() => void handleSignOut()}
-        />
-      </div>
-    </header>
-    <section className="smoke-viewport" aria-label="Break area">
-      <div
-        className="env-backdrop"
-        style={{ backgroundImage: `url(${env.image})` }}
-        role="img"
-        aria-label={`Environment backdrop: ${env.name}`}
+  return (
+    <main className="smoke-break" aria-label="Smoke break" onPointerDown={tap}>
+      <SmokeCommandHeader
+        env={env} activeJokeText={activeTagline.jokeText} done={done} seconds={seconds}
+        profile={profile} isQuickCardOpen={isQuickCardOpen} isSettingsModalOpen={isSettingsModalOpen}
+        accountBusy={accountBusy} showChangeModeAction={lobbyStep === 'game' && state.startedAt === undefined}
+        onToggleQuickCard={() => {
+          if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+          else setIsQuickCardOpen(open => !open);
+        }}
+        onOpenSettingsModal={() => { setIsQuickCardOpen(false); setAccountError(null); setIsSettingsModalOpen(true); }}
+        onChangeMode={() => setLobbyStep('modes')}
+        onSignOut={() => void handleSignOut()}
       />
-      <div className="env-vignette" />
-      <div className="smoke-stage" ref={host} />
-      {error && <p className="smoke-fallback">3D view unavailable. You can still smoke: press space or tap the screen.</p>}
-      <section className="hud-panel smoke-brief">
-        <span className="eyebrow">ON BREAK · {BREAK_MS / 1000} SECONDS · {env.name.toUpperCase()}</span>
-        <h2>{done ? 'Break over. Back to the floor.' : state.startedAt === undefined ? 'Light up.' : 'Keep dragging.'}</h2>
-        <p>{state.startedAt === undefined
-          ? touch
-            ? <>Tap anywhere on the screen to take a drag. The clock starts on your first tap.</>
-            : <>Mash <kbd>Space</kbd> or click to take a drag. The clock starts on your first drag.</>
-          : <>{touch ? 'Keep tapping. ' : ''}Each cigarette takes {PRESSES_PER_CIGARETTE} drags. The next one lights as soon as you stub one out.</>}</p>
+      <section className="smoke-viewport" aria-label="Break area">
+        <div
+          className="env-backdrop" style={{ backgroundImage: `url(${env.image})` }}
+          role="img" aria-label={`Environment backdrop: ${env.name}`}
+        />
+        <div className="env-vignette" />
+        <div className="smoke-stage" ref={host} />
+        {error && (
+          <p className="smoke-fallback">3D view unavailable. You can still smoke: press space or tap the screen.</p>
+        )}
+        <SmokeBriefPanel envName={env.name} done={done} started={state.startedAt !== undefined} touch={touch} />
+        <EnvironmentDeck
+          current={env} onSelect={setEnvId}
+          lifetimeSmoked={reportLifetimeSmoked} unlockedEnvironments={reportUnlockedEnvironments}
+        />
+        <SmokeTallyPanel
+          smoked={state.smoked} progress={state.progress} remaining={remaining}
+          lifetimeSmoked={reportLifetimeSmoked} bestSmoked={reportBestSmoked}
+          gameMode={gameMode} selectedRival={selectedRival}
+        />
+        {lobbyStep !== 'game' && state.startedAt === undefined && (
+          <SmokeBreakLobby
+            step={lobbyStep} profile={profile} currentEnv={env}
+            unlockedEnvironments={reportUnlockedEnvironments}
+            leaderboardEntries={leaderboard.entries} selectedRival={selectedRival}
+            statusBanner={statusBanner} onDismissBanner={() => setStatusBanner(null)}
+            onSelectEnvironment={setEnvId}
+            onSaveCallsign={async next => { setProfile(await updatePlayerCallsign(next)); }}
+            onLoginPassword={async (callsign, password, mode) => {
+              setProfile(await loginWithPassword(callsign, password, undefined, mode));
+            }}
+            onLoginOAuth={async (provider, idToken, callsign) => {
+              setProfile(await loginWithOAuth({ provider, idToken, callsign }));
+            }}
+            onCompleteLogin={() => setLobbyStep('modes')}
+            onSelectMode={mode => {
+              setGameMode(mode);
+              setLobbyStep(mode === 'campaign' ? 'map' : mode === 'h2h' ? 'h2h' : 'game');
+            }}
+            onSelectRival={setSelectedRival}
+            onSetStep={setLobbyStep}
+            onStartShift={() => setLobbyStep('game')}
+          />
+        )}
+        {isSettingsModalOpen && (
+          <AccountSettingsModal
+            profile={profile} busy={accountBusy} error={accountError}
+            onClose={() => setIsSettingsModalOpen(false)}
+            onSaveCallsign={async next => { setProfile(await updatePlayerCallsign(next)); }}
+            onSignOut={() => void handleSignOut()}
+            onDeleteAccount={() => void handleDeleteAccount()}
+            onTaglinesUpdated={next => {
+              if (next.taglines.length > 0) {
+                setTaglines(next.taglines);
+                setActiveJokeIndex(idx => idx % next.taglines.length);
+              }
+              setTaglineCadence(next.cadence);
+            }}
+          />
+        )}
+        {done && (
+          <BreakReportDialog
+            verifiedEnvironment={verifiedEnv} smoked={reportSmoked}
+            lifetimeSmoked={reportLifetimeSmoked} bestSmoked={reportBestSmoked}
+            newlyUnlockedEnvironments={reportNewlyUnlocked}
+            profile={profile} leaderboardEntries={leaderboardEntries}
+            gameMode={gameMode} rival={selectedRival} armed={armed}
+            newShiftRef={newShift} onFinish={finish}
+            onOpenModes={() => { setLobbyStep('modes'); finish(); }}
+          />
+        )}
       </section>
-      <EnvironmentDeck
-        current={env}
-        onSelect={setEnvId}
-        lifetimeSmoked={reportLifetimeSmoked}
-        unlockedEnvironments={reportUnlockedEnvironments}
-      />
-      <section className="hud-panel smoke-tally" aria-label="Smoke break tally">
-        <span className="eyebrow">BUTTS IN THE TRAY</span>
-        <strong>{state.smoked}</strong>
-        <span className="eyebrow">CURRENT CIGARETTE</span>
-        <meter aria-label="Current cigarette smoked" value={state.progress} max={PRESSES_PER_CIGARETTE} />
-        <span className="eyebrow">BREAK LEFT</span>
-        <meter aria-label="Break time left" value={remaining} max={BREAK_MS} />
-        <div className="smoke-tally-career" aria-label="Career smoke break stats">
-          <span>LIFETIME: {reportLifetimeSmoked}</span>
-          <span>BEST: {reportBestSmoked}</span>
-          {gameMode === 'h2h' && selectedRival && (
-            <span>VS {selectedRival.callsign}: {selectedRival.smoked}</span>
-          )}
-        </div>
-      </section>
-      {lobbyStep !== 'game' && state.startedAt === undefined && (
-        <SmokeBreakLobby
-          step={lobbyStep}
-          profile={profile}
-          currentEnv={env}
-          unlockedEnvironments={reportUnlockedEnvironments}
-          leaderboardEntries={leaderboard.entries}
-          selectedRival={selectedRival}
-          statusBanner={statusBanner}
-          onDismissBanner={() => setStatusBanner(null)}
-          onSelectEnvironment={setEnvId}
-          onSaveCallsign={async nextCallsign => {
-            const updated = await updatePlayerCallsign(nextCallsign);
-            setProfile(updated);
-          }}
-          onLoginPassword={async (callsign, password) => {
-            const updated = await loginWithPassword(callsign, password);
-            setProfile(updated);
-          }}
-          onLoginOAuth={async (provider, idToken, callsign) => {
-            const updated = await loginWithOAuth({ provider, idToken, callsign });
-            setProfile(updated);
-          }}
-          onCompleteLogin={() => setLobbyStep('modes')}
-          onSelectMode={mode => {
-            setGameMode(mode);
-            if (mode === 'campaign') setLobbyStep('map');
-            else if (mode === 'h2h') setLobbyStep('h2h');
-            else setLobbyStep('game');
-          }}
-          onSelectRival={setSelectedRival}
-          onSetStep={setLobbyStep}
-          onStartShift={() => setLobbyStep('game')}
-        />
-      )}
-      {isSettingsModalOpen && (
-        <AccountSettingsModal
-          profile={profile}
-          busy={accountBusy}
-          error={accountError}
-          onClose={() => setIsSettingsModalOpen(false)}
-          onSaveCallsign={async nextCallsign => {
-            const updated = await updatePlayerCallsign(nextCallsign);
-            setProfile(updated);
-          }}
-          onSignOut={() => void handleSignOut()}
-          onDeleteAccount={() => void handleDeleteAccount()}
-          onTaglinesUpdated={next => {
-            if (next.taglines.length > 0) {
-              setTaglines(next.taglines);
-              setActiveJokeIndex(idx => idx % next.taglines.length);
-            }
-            setTaglineCadence(next.cadence);
-          }}
-        />
-      )}
-      {done && (
-        <BreakReportDialog
-          verifiedEnvironment={verifiedEnv}
-          smoked={reportSmoked}
-          lifetimeSmoked={reportLifetimeSmoked}
-          bestSmoked={reportBestSmoked}
-          newlyUnlockedEnvironments={reportNewlyUnlocked}
-          profile={profile}
-          leaderboardEntries={leaderboardEntries}
-          gameMode={gameMode}
-          rival={selectedRival}
-          armed={armed}
-          newShiftRef={newShift}
-          onFinish={finish}
-          onOpenModes={() => {
-            setLobbyStep('modes');
-            finish();
-          }}
-        />
-      )}
-    </section>
-  </main>;
+    </main>
+  );
 }
-

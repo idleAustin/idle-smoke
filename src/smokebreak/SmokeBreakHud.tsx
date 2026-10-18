@@ -1,79 +1,138 @@
-import { useState, type FormEvent, type RefObject } from 'react';
+// Heads-up display panels for active smoke breaks: top command bar, brief instructions, butt tally, and post-shift report dialog.
+
+import { type RefObject } from 'react';
+import { formatWhereTagline } from './accountClient';
 import { type EnvironmentId, getEnvironment, type SmokeEnvironment } from './EnvironmentDeck';
-import { type LeaderboardEntry, type PlayerProfile } from './shiftClient';
-import { BREAK_MS } from './smokeBreak';
+import { type LeaderboardEntry, type PlayerProfile } from './shiftStorage';
+import { BREAK_MS, PRESSES_PER_CIGARETTE } from './smokeBreak';
+import { type GameModeId, type RivalOpponent } from './SmokeBreakLobby';
+import { UserCircleTrigger } from './UserProfileMenu';
 
-export function CallsignBadge({
-  callsign,
-  onSave,
+export function SmokeCommandHeader({
+  env,
+  activeJokeText,
+  done,
+  seconds,
+  profile,
+  isQuickCardOpen,
+  isSettingsModalOpen,
+  accountBusy,
+  showChangeModeAction,
+  onToggleQuickCard,
+  onOpenSettingsModal,
+  onChangeMode,
+  onSignOut,
 }: {
-  callsign: string;
-  onSave: (nextCallsign: string) => Promise<void>;
+  env: SmokeEnvironment;
+  activeJokeText: string;
+  done: boolean;
+  seconds: number;
+  profile: PlayerProfile;
+  isQuickCardOpen: boolean;
+  isSettingsModalOpen: boolean;
+  accountBusy: boolean;
+  showChangeModeAction: boolean;
+  onToggleQuickCard: () => void;
+  onOpenSettingsModal: () => void;
+  onChangeMode: () => void;
+  onSignOut: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(callsign);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    try {
-      await onSave(draft);
-      setEditing(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid callsign');
-    }
-  };
-
-  if (!editing) {
-    return (
-      <div className="callsign-badge" aria-label="Employee callsign badge">
-        <span className="status-dot" />
-        <span className="callsign-label">BADGE · {callsign}</span>
-        <button
-          type="button"
-          className="callsign-edit-btn"
-          aria-label="Edit employee callsign"
-          onClick={() => {
-            setDraft(callsign);
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          Edit
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <form className="callsign-form" onSubmit={handleSubmit}>
-      <input
-        type="text"
-        className="callsign-input"
-        aria-label="Employee callsign"
-        value={draft}
-        maxLength={16}
-        onChange={e => setDraft(e.target.value)}
-        autoFocus
-      />
-      <button type="submit" className="callsign-save-btn">Save</button>
-      <button
-        type="button"
-        className="callsign-cancel-btn"
-        onClick={() => {
-          setEditing(false);
-          setError(null);
-        }}
-      >
-        Cancel
-      </button>
-      {error && <span className="callsign-error" role="alert">{error}</span>}
-    </form>
+    <header className="hud-command hud-panel" onPointerDown={e => e.stopPropagation()}>
+      <div className="hud-brand">
+        <span className="eyebrow">idleSmoke · {env.sector}</span>
+        <strong className="hud-tagline">
+          <span className="hud-tagline-brand">idleSmoke</span>
+          <span className="hud-tagline-copy">
+            {' — '}{formatWhereTagline(activeJokeText)}
+          </span>
+        </strong>
+      </div>
+      <div className="hud-right-group">
+        <div
+          className={`shift-clock ${done ? 'complete' : 'running'}`}
+          role="timer"
+          aria-label="Smoke break time remaining"
+        >
+          0:{String(seconds).padStart(2, '0')}
+        </div>
+        <UserCircleTrigger
+          profile={profile}
+          isQuickCardOpen={isQuickCardOpen}
+          isSettingsModalOpen={isSettingsModalOpen}
+          busy={accountBusy}
+          showChangeModeAction={showChangeModeAction}
+          onToggleQuickCard={onToggleQuickCard}
+          onOpenSettingsModal={onOpenSettingsModal}
+          onChangeMode={onChangeMode}
+          onSignOut={onSignOut}
+        />
+      </div>
+    </header>
   );
 }
 
-import { type GameModeId, type RivalOpponent } from './SmokeBreakLobby';
+export function SmokeBriefPanel({
+  envName,
+  done,
+  started,
+  touch,
+}: {
+  envName: string;
+  done: boolean;
+  started: boolean;
+  touch: boolean;
+}) {
+  return (
+    <section className="hud-panel smoke-brief">
+      <span className="eyebrow">ON BREAK · {BREAK_MS / 1000} SECONDS · {envName.toUpperCase()}</span>
+      <h2>{done ? 'Break over. Back to the floor.' : !started ? 'Light up.' : 'Keep dragging.'}</h2>
+      <p>
+        {!started
+          ? touch
+            ? <>Tap anywhere on the screen to take a drag. The clock starts on your first tap.</>
+            : <>Mash <kbd>Space</kbd> or click to take a drag. The clock starts on your first drag.</>
+          : <>{touch ? 'Keep tapping. ' : ''}Each cigarette takes {PRESSES_PER_CIGARETTE} drags. The next one lights as soon as you stub one out.</>}
+      </p>
+    </section>
+  );
+}
+
+export function SmokeTallyPanel({
+  smoked,
+  progress,
+  remaining,
+  lifetimeSmoked,
+  bestSmoked,
+  gameMode,
+  selectedRival,
+}: {
+  smoked: number;
+  progress: number;
+  remaining: number;
+  lifetimeSmoked: number;
+  bestSmoked: number;
+  gameMode: GameModeId;
+  selectedRival: RivalOpponent | null;
+}) {
+  return (
+    <section className="hud-panel smoke-tally" aria-label="Smoke break tally">
+      <span className="eyebrow">BUTTS IN THE TRAY</span>
+      <strong>{smoked}</strong>
+      <span className="eyebrow">CURRENT CIGARETTE</span>
+      <meter aria-label="Current cigarette smoked" value={progress} max={PRESSES_PER_CIGARETTE} />
+      <span className="eyebrow">BREAK LEFT</span>
+      <meter aria-label="Break time left" value={remaining} max={BREAK_MS} />
+      <div className="smoke-tally-career" aria-label="Career smoke break stats">
+        <span>LIFETIME: {lifetimeSmoked}</span>
+        <span>BEST: {bestSmoked}</span>
+        {gameMode === 'h2h' && selectedRival && (
+          <span>VS {selectedRival.callsign}: {selectedRival.smoked}</span>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export function BreakReportDialog({
   verifiedEnvironment,

@@ -51,6 +51,9 @@
     "entry": [
       "server/worker.js"
     ],
+    "ignoreBinaries": [
+      "doppler"
+    ],
     "ignoreDependencies": [
       "@capacitor/android",
       "@capacitor/ios"

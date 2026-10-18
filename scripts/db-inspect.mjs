@@ -4,7 +4,7 @@ import {
   INSPECT_QUERIES,
   formatInspectReport,
   normalizeInspectSummary,
-} from '../server/starSchema.js';
+} from '../server/storeQueries.js';
 
 const args = new Set(process.argv.slice(2));
 const isStaging = args.has('--staging');

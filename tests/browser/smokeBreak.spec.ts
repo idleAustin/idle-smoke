@@ -16,11 +16,13 @@ test('signs in, selects Campaign mode and Sector Map, smokes a cigarette in 12 d
   await expect(canvas).toBeVisible();
   await expect(timer).toHaveText('0:15');
 
-  // Step 1: Login modal is presented first. Sign in with callsign DOCK-LEAD.
+  // Step 1: Login modal is presented first. Register callsign DOCK-LEAD.
   const loginDialog = page.getByRole('dialog', { name: 'Sign in to Smoke Break' });
   await expect(loginDialog).toBeVisible();
+  await loginDialog.getByRole('tab', { name: 'New Hire · Create Account' }).click();
   await loginDialog.getByRole('textbox', { name: 'Login callsign' }).fill('DOCK-LEAD');
-  await loginDialog.getByRole('button', { name: /Sign In & Choose Game Mode/ }).click();
+  await loginDialog.getByRole('textbox', { name: 'Login password' }).fill('dock1234');
+  await loginDialog.getByRole('button', { name: /Create Account & Choose Game Mode/ }).click();
 
   // Step 2: 3-Card Game Mode Selection (Campaign, Head-to-Head, Sandbox).
   const modeRegion = page.getByRole('region', { name: 'Select Game Mode' });

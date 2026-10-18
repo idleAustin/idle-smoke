@@ -2,18 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { handleApiRequest } from '../../server/shiftApi.js';
 import { createSqliteStore, openSqliteDb } from '../../server/sqliteDb.js';
 import {
-  bootstrapPlayerSession,
   deletePlayerAccount,
-  flushPendingShifts,
-  getCachedPlayerProfile,
-  getPendingShifts,
   loginWithPassword,
-  resetShiftClientStateForTests,
   signOutPlayerSession,
+  updatePlayerCallsign,
+} from './accountClient';
+import {
+  bootstrapPlayerSession,
+  flushPendingShifts,
   startShiftSession,
   submitFinishedShift,
-  updatePlayerCallsign,
 } from './shiftClient';
+import {
+  getCachedPlayerProfile,
+  getPendingShifts,
+  resetShiftClientStateForTests,
+} from './shiftStorage';
 import { resolveEnvironmentImagePath } from './EnvironmentDeck';
 import { freshShiftSession, recordShiftDrag } from './smokeBreak';
 
@@ -295,7 +299,12 @@ describe('shiftClient frontend progression & leaderboard client', () => {
         fetchMock
       );
 
-      const claimed = await loginWithPassword('NIGHT-OWL', 'secret-pass', fetchMock);
+      // Attempting to sign in before creating the account throws Account not found
+      await expect(loginWithPassword('NIGHT-OWL', 'secret-pass', fetchMock, 'login')).rejects.toThrow(
+        /Account not found/i
+      );
+
+      const claimed = await loginWithPassword('NIGHT-OWL', 'secret-pass', fetchMock, 'register');
       expect(claimed.playerId).toBe(device1Boot.profile.playerId);
       expect(claimed.callsign).toBe('NIGHT-OWL');
       expect(claimed.lifetimeSmoked).toBe(5);
@@ -342,7 +351,7 @@ describe('shiftClient frontend progression & leaderboard client', () => {
         { environmentId: 'alleyway', pressOffsetsMs: sixtyDrags },
         fetchMock
       );
-      const linked = await loginWithPassword('ASH-KING', 'my-secret', fetchMock);
+      const linked = await loginWithPassword('ASH-KING', 'my-secret', fetchMock, 'register');
       expect(linked.callsign).toBe('ASH-KING');
       expect(linked.authProvider).toBe('password');
       expect(linked.lifetimeSmoked).toBe(5);

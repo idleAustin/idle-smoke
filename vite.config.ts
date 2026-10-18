@@ -25,7 +25,13 @@ function buildCommit() {
 
 const isBrowserTest = process.env.SMOKE_BROWSER_TEST === '1';
 
-if (!isBrowserTest && (!process.env.VITE_APPLE_CLIENT_ID || !process.env.VITE_GOOGLE_CLIENT_ID)) {
+if (
+  !isBrowserTest &&
+  (!process.env.VITE_APPLE_CLIENT_ID ||
+    !process.env.VITE_GOOGLE_CLIENT_ID ||
+    !process.env.ADMIN_EMAILS ||
+    !process.env.ADMIN_PASSCODE)
+) {
   try {
     const raw = execFileSync(
       'doppler',
@@ -34,7 +40,11 @@ if (!isBrowserTest && (!process.env.VITE_APPLE_CLIENT_ID || !process.env.VITE_GO
     ).toString();
     const secrets = JSON.parse(raw) as Record<string, string>;
     for (const [key, val] of Object.entries(secrets)) {
-      if (key.startsWith('VITE_') && !process.env[key] && typeof val === 'string') {
+      if (
+        (key.startsWith('VITE_') || key === 'ADMIN_EMAILS' || key === 'ADMIN_PASSCODE') &&
+        !process.env[key] &&
+        typeof val === 'string'
+      ) {
         process.env[key] = val;
       }
     }
@@ -68,8 +78,8 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(version),
     __APP_COMMIT__: JSON.stringify(buildCommit()),
   },
-  // Browser tests use a fixed build; cloud-sync file events must not reload mid-gesture.
-  server: isBrowserTest ? { watch: null } : undefined,
+  // Browser tests use a fixed build; local dev pins to 127.0.0.1:5176 to match Google OAuth redirect URI.
+  server: isBrowserTest ? { watch: null } : { host: '127.0.0.1', port: 5176, strictPort: true },
   // The Playwright server and an open dev preview must not rewrite each other's dependency cache.
   cacheDir: isBrowserTest ? 'node_modules/.vite-browser-tests' : 'node_modules/.vite',
 });
