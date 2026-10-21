@@ -9,6 +9,8 @@ import {
   createSmokeSession,
   fetchSmokeSession,
   joinSmokeSessionByCode,
+  normalizeSmokeSession,
+  pickFresherSmokeSession,
   startSmokeSessionById,
 } from './smokeSessionClient';
 import { freshShiftSession, recordShiftDrag, remainingMs } from './smokeBreak';
@@ -316,6 +318,183 @@ describe('Smoke Session 2-digit room code flow & 3-2-1 countdown clock', () => {
 
     const started = await startSmokeSessionById(created.sessionId, fetchApi);
     expect(started.status).toBe('active');
+
+    resetShiftClientStateForTests();
+    db.close();
+  });
+
+  it('resolves post-shift scoreboard via pickFresherSmokeSession when TEST1 finishes before TEST2 and rejects stale polls', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:');
+    const store = createSqliteStore(db);
+    const nowUnix = 1_700_001_000;
+
+    const test1 = await createTestPlayer(store, 'TEST1', nowUnix);
+    const test2 = await createTestPlayer(store, 'TEST2', nowUnix);
+
+    const fetchApi: FetchLike = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      const pathname = url.startsWith('http') ? new URL(url).pathname : url;
+      const headers = new Headers(init?.headers);
+      const result = await handleApiRequest(
+        {
+          method: init?.method ?? 'GET',
+          pathname,
+          authHeader: headers.get('Authorization'),
+          rawBody: typeof init?.body === 'string' ? init.body : undefined,
+        },
+        store,
+        { nowUnix }
+      );
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    setStoredToken(test1.token);
+    const created = await createSmokeSession('alleyway', fetchApi);
+
+    setStoredToken(test2.token);
+    await joinSmokeSessionByCode(created.code, fetchApi);
+
+    setStoredToken(test1.token);
+    const activeBeforeFinish = await startSmokeSessionById(created.sessionId, fetchApi);
+    expect(activeBeforeFinish.status).toBe('active');
+    expect(activeBeforeFinish.participants.filter(p => p.finished)).toHaveLength(0);
+
+    // 10 * 12 (120) + 7 * 8 (56) = 176 drags -> 17 butts for TEST1
+    const makeOffsets = (count: number) => Array.from({ length: count }, (_, i) => i * 40);
+    const finishTest1Res = await handleApiRequest(
+      {
+        method: 'POST',
+        pathname: '/api/v1/shifts/finish',
+        authHeader: `Bearer ${test1.token}`,
+        rawBody: JSON.stringify({
+          environmentId: 'alleyway',
+          sessionId: created.sessionId,
+          pressOffsetsMs: makeOffsets(176),
+        }),
+      },
+      store,
+      { nowUnix: nowUnix + 20 }
+    );
+    expect(finishTest1Res.status).toBe(200);
+    const shiftResultSmokeSession = normalizeSmokeSession(finishTest1Res.body.smokeSession);
+    expect(shiftResultSmokeSession).not.toBeNull();
+    expect(shiftResultSmokeSession?.status).toBe('active');
+    expect(shiftResultSmokeSession?.participants.filter(p => p.finished)).toHaveLength(1);
+    expect(
+      shiftResultSmokeSession?.participants.find(p => p.callsign === 'TEST1')
+    ).toMatchObject({
+      finished: true,
+      smoked: 17,
+      tapCount: 176,
+    });
+    expect(
+      shiftResultSmokeSession?.participants.find(p => p.callsign === 'TEST2')
+    ).toMatchObject({
+      finished: false,
+      smoked: null,
+    });
+
+    // Out-of-order stale poll (0/2 finished) never overwrites a newer snapshot (1/2 finished)
+    expect(pickFresherSmokeSession(activeBeforeFinish, shiftResultSmokeSession)).toEqual(
+      shiftResultSmokeSession
+    );
+    expect(pickFresherSmokeSession(shiftResultSmokeSession, activeBeforeFinish)).toEqual(
+      shiftResultSmokeSession
+    );
+
+    // TEST2 finishes their shift with 120 drags (10 butts)
+    const finishTest2Res = await handleApiRequest(
+      {
+        method: 'POST',
+        pathname: '/api/v1/shifts/finish',
+        authHeader: `Bearer ${test2.token}`,
+        rawBody: JSON.stringify({
+          environmentId: 'alleyway',
+          sessionId: created.sessionId,
+          pressOffsetsMs: makeOffsets(120),
+        }),
+      },
+      store,
+      { nowUnix: nowUnix + 22 }
+    );
+    expect(finishTest2Res.status).toBe(200);
+
+    setStoredToken(test1.token);
+    const updatedSession = await fetchSmokeSession(created.sessionId, fetchApi);
+    expect(updatedSession).not.toBeNull();
+    expect(updatedSession?.status).toBe('completed');
+    expect(updatedSession?.participants.filter(p => p.finished)).toHaveLength(2);
+
+    // Both argument orders return updatedSession (2/2 finished, status: 'completed') rather than staying pinned to shiftResult.smokeSession
+    expect(pickFresherSmokeSession(updatedSession, shiftResultSmokeSession)).toEqual(updatedSession);
+    expect(pickFresherSmokeSession(shiftResultSmokeSession, updatedSession)).toEqual(updatedSession);
+    expect(
+      pickFresherSmokeSession(updatedSession, shiftResultSmokeSession)?.participants.map(p => ({
+        rank: p.rank,
+        callsign: p.callsign,
+        smoked: p.smoked,
+        finished: p.finished,
+      }))
+    ).toEqual([
+      { rank: 1, callsign: 'TEST1', smoked: 17, finished: true },
+      { rank: 2, callsign: 'TEST2', smoked: 10, finished: true },
+    ]);
+
+    resetShiftClientStateForTests();
+    db.close();
+  });
+
+  it('polls GET /api/v1/sessions/:id directly via fetchSmokeSession without calling GET /api/v1/players/me when a token is stored', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:');
+    const store = createSqliteStore(db);
+    const nowUnix = 1_700_002_000;
+
+    const host = await createTestPlayer(store, 'HOST-POLL', nowUnix);
+    const createRes = await handleApiRequest(
+      {
+        method: 'POST',
+        pathname: '/api/v1/sessions',
+        authHeader: `Bearer ${host.token}`,
+        rawBody: JSON.stringify({ environmentId: 'alleyway' }),
+      },
+      store,
+      { nowUnix }
+    );
+    expect(createRes.status).toBe(201);
+    const sessionId = String((createRes.body.session as Record<string, unknown>).sessionId);
+
+    const requestedPaths: string[] = [];
+    const trackingFetch: FetchLike = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      const pathname = url.startsWith('http') ? new URL(url).pathname : url;
+      requestedPaths.push(`${init?.method ?? 'GET'} ${pathname}`);
+      const headers = new Headers(init?.headers);
+      const result = await handleApiRequest(
+        {
+          method: init?.method ?? 'GET',
+          pathname,
+          authHeader: headers.get('Authorization'),
+          rawBody: typeof init?.body === 'string' ? init.body : undefined,
+        },
+        store,
+        { nowUnix }
+      );
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    setStoredToken(host.token);
+    const polled = await fetchSmokeSession(sessionId, trackingFetch);
+    expect(polled?.sessionId).toBe(sessionId);
+    expect(requestedPaths).toEqual([`GET /api/v1/sessions/${sessionId}`]);
+    expect(requestedPaths).not.toContain('GET /api/v1/players/me');
 
     resetShiftClientStateForTests();
     db.close();

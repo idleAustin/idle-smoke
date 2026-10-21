@@ -1,6 +1,6 @@
 // Pre-shift 2-digit code Smoke Session lobby for creating a session, joining by code, and syncing the waiting-room crew roster.
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getEnvironment, type EnvironmentId, type SmokeEnvironment } from './EnvironmentDeck';
 import { type PlayerProfile } from './shiftStorage';
 import {
@@ -33,23 +33,34 @@ export function SmokeSessionLobby({
   const [codeInput, setCodeInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const callbacksRef = useRef({
+    onSelectEnvironment,
+    onSessionChange,
+    onStartSessionShift,
+  });
+  callbacksRef.current = {
+    onSelectEnvironment,
+    onSessionChange,
+    onStartSessionShift,
+  };
 
   useEffect(() => {
     if (!activeSession) return;
     if (activeSession.status === 'active') {
-      onSelectEnvironment(activeSession.environmentId);
-      onStartSessionShift(activeSession);
+      callbacksRef.current.onSelectEnvironment(activeSession.environmentId);
+      callbacksRef.current.onStartSessionShift(activeSession);
       return;
     }
 
+    const sessionId = activeSession.sessionId;
     let mounted = true;
     const timer = setInterval(async () => {
-      const updated = await fetchSmokeSession(activeSession.sessionId);
+      const updated = await fetchSmokeSession(sessionId);
       if (!mounted || !updated) return;
-      onSessionChange(updated);
+      callbacksRef.current.onSessionChange(updated);
       if (updated.status === 'active') {
-        onSelectEnvironment(updated.environmentId);
-        onStartSessionShift(updated);
+        callbacksRef.current.onSelectEnvironment(updated.environmentId);
+        callbacksRef.current.onStartSessionShift(updated);
       }
     }, 1000);
 
@@ -57,7 +68,7 @@ export function SmokeSessionLobby({
       mounted = false;
       clearInterval(timer);
     };
-  }, [activeSession, onSelectEnvironment, onSessionChange, onStartSessionShift]);
+  }, [activeSession?.sessionId, activeSession?.status, activeSession?.environmentId]);
 
   const handleHostSession = async () => {
     setBusy(true);

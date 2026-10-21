@@ -1,7 +1,7 @@
 // Client API helpers and normalizers for 2-digit code Smoke Sessions (create, join, poll, and start).
 
 import { ensureAuthenticatedPlayer } from './shiftClient';
-import { resolveApiPath, type FetchLike } from './shiftStorage';
+import { getStoredToken, hydrateNativeStorage, resolveApiPath, type FetchLike } from './shiftStorage';
 import { type EnvironmentId } from './smokeBreak';
 
 type SmokeSessionStatus = 'waiting' | 'active' | 'completed';
@@ -29,6 +29,34 @@ export interface SmokeSession {
   startedAt: number | null;
   completedAt: number | null;
   participants: SmokeSessionParticipant[];
+}
+
+export function pickFresherSmokeSession(
+  a: SmokeSession | null | undefined,
+  b: SmokeSession | null | undefined
+): SmokeSession | null {
+  if (!b) return a ?? null;
+  if (!a || a.sessionId !== b.sessionId) return b;
+
+  const finishedA = a.participants.filter(p => p.finished).length;
+  const finishedB = b.participants.filter(p => p.finished).length;
+  if (finishedA !== finishedB) {
+    return finishedA > finishedB ? a : b;
+  }
+
+  const statusRank = (status: SmokeSessionStatus): number =>
+    status === 'completed' ? 2 : status === 'active' ? 1 : 0;
+  const rankA = statusRank(a.status);
+  const rankB = statusRank(b.status);
+  if (rankA !== rankB) {
+    return rankA > rankB ? a : b;
+  }
+
+  if (a.participants.length !== b.participants.length) {
+    return a.participants.length > b.participants.length ? a : b;
+  }
+
+  return b;
 }
 
 export function normalizeSmokeSession(raw: unknown): SmokeSession | null {
@@ -120,16 +148,27 @@ export async function fetchSmokeSession(
   idOrCode: string,
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<SmokeSession | null> {
-  const { token, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
-  if (!token || !reachable) return null;
+  await hydrateNativeStorage();
+  let token = getStoredToken();
+  if (!token) {
+    const auth = await ensureAuthenticatedPlayer(fetchImpl);
+    if (!auth.token || !auth.reachable) return null;
+    token = auth.token;
+  }
+  const url = resolveApiPath(`/api/v1/sessions/${encodeURIComponent(idOrCode)}`);
   try {
-    const res = await fetchImpl(
-      resolveApiPath(`/api/v1/sessions/${encodeURIComponent(idOrCode)}`),
-      {
+    let res = await fetchImpl(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) {
+      const auth = await ensureAuthenticatedPlayer(fetchImpl);
+      if (!auth.token || !auth.reachable) return null;
+      res = await fetchImpl(url, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+    }
     if (!res.ok) return null;
     const data = (await res.json()) as Record<string, unknown>;
     return normalizeSmokeSession(data.session);
