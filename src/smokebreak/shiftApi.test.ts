@@ -112,6 +112,23 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
         lifetimeSmoked: 0,
         bestSmoked: 0,
         shiftsCompleted: 0,
+        smokedByEnvironment: {
+          alleyway: 0,
+          restaurant: 0,
+          'parking-garage': 0,
+          dumpster: 0,
+          'office-sidewalk': 0,
+          'breakroom-patio': 0,
+          'strip-mall-median': 0,
+          'designated-gazebo': 0,
+          'executive-balcony': 0,
+          'concert-side-stage': 0,
+          'superyacht-aft-deck': 0,
+          'penthouse-helipad': 0,
+        },
+        promotionRoundsCleared: 0,
+        unlockedPhase: 1,
+        isChairman: false,
         unlockedEnvironments: ['alleyway'],
       });
       expect(JSON.stringify(meRes.body)).not.toContain(expectedHash);
@@ -176,7 +193,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
     }
   });
 
-  it('replays pressOffsetsMs deterministically in <10ms, updates shift_fact and player_dim atomically, and unlocks environments at 0, 5, 15, and 30', async () => {
+  it('replays pressOffsetsMs deterministically in <10ms, updates shift_fact and player_dim atomically, and unlocks environments sequentially by per-sector quota', async () => {
     const db = openSqliteDb(':memory:');
     try {
       const store = createSqliteStore(db);
@@ -186,7 +203,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       );
       const token = String((created as Record<string, unknown>).playerToken);
 
-      // Cannot start or finish in locked 'restaurant' at 0 lifetime cigarettes
+      // Cannot start or finish in locked 'restaurant' at 0 cigarettes in alleyway -> 403 environment_locked
       const lockedStart = await handleApiRequest(
         {
           method: 'POST',
@@ -196,7 +213,8 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
         },
         store
       );
-      expect(lockedStart.status).toBe(400);
+      expect(lockedStart.status).toBe(403);
+      expect(String((lockedStart.body as Record<string, unknown>).error)).toContain('environment_locked');
 
       // Start shift 1 in 'alleyway' and smoke 5 cigarettes (60 presses) -> unlocks 'restaurant'
       const start1 = await handleApiRequest(
@@ -282,7 +300,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
         'parking-garage',
       ]);
 
-      // Shift 3 in 'parking-garage': 15 cigarettes (180 presses) -> lifetime 30 -> unlocks 'dumpster'
+      // Shift 3 in 'parking-garage': 15 cigarettes (160 presses under 12/8/4 Drag Ratio) -> lifetime 30 -> unlocks 'dumpster'
       const finish3 = await handleApiRequest(
         {
           method: 'POST',
@@ -290,7 +308,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
           authHeader: `Bearer ${token}`,
           rawBody: JSON.stringify({
             environmentId: 'parking-garage',
-            pressOffsetsMs: makeOffsets(180, 50),
+            pressOffsetsMs: makeOffsets(160, 50),
           }),
         },
         store
@@ -557,6 +575,190 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       expect(serialized).not.toContain(String(player.playerToken));
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()));
+      db.close();
+    }
+  });
+
+  it('enforces sequential per-sector quotas, advances 3-round checkpointed Promotions to Phase 2, and rejects spoofed progression fields with 400 score_fields_forbidden', async () => {
+    const db = openSqliteDb(':memory:');
+    try {
+      const store = createSqliteStore(db);
+      const { body: created } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: '{}' },
+        store
+      );
+      const token = String((created as Record<string, unknown>).playerToken);
+
+      // Smoking 30 butts in alleyway (240 presses: 120 + 80 + 40) only unlocks restaurant, NOT parking-garage
+      const alleyFinish = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'alleyway',
+            pressOffsetsMs: makeOffsets(240, 20),
+          }),
+        },
+        store
+      );
+      expect(alleyFinish.status).toBe(200);
+      expect((alleyFinish.body.profile as Record<string, unknown>).unlockedEnvironments).toEqual([
+        'alleyway',
+        'restaurant',
+      ]);
+
+      // Attempting parking-garage before clearing restaurant quota (10) -> 403 environment_locked
+      const lockedGarage = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'parking-garage',
+            pressOffsetsMs: makeOffsets(12, 100),
+          }),
+        },
+        store
+      );
+      expect(lockedGarage.status).toBe(403);
+      expect(String(lockedGarage.body.error)).toContain('environment_locked');
+
+      // Clear restaurant (10 butts = 120 presses) and parking-garage (15 butts = 160 presses)
+      await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'restaurant',
+            pressOffsetsMs: makeOffsets(120, 40),
+          }),
+        },
+        store
+      );
+      await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'parking-garage',
+            pressOffsetsMs: makeOffsets(160, 40),
+          }),
+        },
+        store
+      );
+
+      // Quota-clearing shift in dumpster (20 butts = 200 presses) unlocks Promotion but does NOT advance Round 1 yet
+      const dumpsterQuota = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'dumpster',
+            pressOffsetsMs: makeOffsets(200, 30),
+          }),
+        },
+        store
+      );
+      expect(dumpsterQuota.status).toBe(200);
+      expect((dumpsterQuota.body.profile as Record<string, unknown>).promotionRoundsCleared).toBe(0);
+
+      // Promotion Round 1 (10 butts = 120 presses) -> promotionRoundsCleared = 1
+      const round1 = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'dumpster',
+            pressOffsetsMs: makeOffsets(120, 40),
+          }),
+        },
+        store
+      );
+      expect((round1.body.profile as Record<string, unknown>).promotionRoundsCleared).toBe(1);
+
+      // Failed Promotion Round 2 (14 butts = 152 presses < 15 target) -> stays checkpointed at 1
+      const failedRound2 = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'dumpster',
+            pressOffsetsMs: makeOffsets(152, 40),
+          }),
+        },
+        store
+      );
+      expect((failedRound2.body.profile as Record<string, unknown>).promotionRoundsCleared).toBe(1);
+
+      // Clear Round 2 (15 butts = 160 presses) -> 2, then Round 3 (20 butts = 200 presses) -> 3 (unlocks Phase 2 office-sidewalk)
+      const round2 = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'dumpster',
+            pressOffsetsMs: makeOffsets(160, 40),
+          }),
+        },
+        store
+      );
+      expect((round2.body.profile as Record<string, unknown>).promotionRoundsCleared).toBe(2);
+
+      const round3 = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${token}`,
+          rawBody: JSON.stringify({
+            environmentId: 'dumpster',
+            pressOffsetsMs: makeOffsets(200, 30),
+          }),
+        },
+        store
+      );
+      const profileAfterPhase1 = round3.body.profile as Record<string, unknown>;
+      expect(profileAfterPhase1.promotionRoundsCleared).toBe(3);
+      expect(profileAfterPhase1.unlockedPhase).toBe(2);
+      expect(round3.body.newlyUnlockedEnvironments).toEqual(['office-sidewalk']);
+      expect(profileAfterPhase1.unlockedEnvironments).toEqual([
+        'alleyway',
+        'restaurant',
+        'parking-garage',
+        'dumpster',
+        'office-sidewalk',
+      ]);
+
+      // Spoofed progression fields are rejected with 400 score_fields_forbidden
+      for (const spoofKey of [
+        'promotionRoundsCleared',
+        'smokedByEnvironment',
+        'unlockedPhase',
+        'isChairman',
+      ]) {
+        const spoofRes = await handleApiRequest(
+          {
+            method: 'POST',
+            pathname: '/api/v1/shifts/finish',
+            authHeader: `Bearer ${token}`,
+            rawBody: JSON.stringify({
+              environmentId: 'alleyway',
+              pressOffsetsMs: makeOffsets(12, 100),
+              [spoofKey]: 9,
+            }),
+          },
+          store
+        );
+        expect(spoofRes.status).toBe(400);
+        expect(String(spoofRes.body.error)).toContain('score_fields_forbidden');
+      }
+    } finally {
       db.close();
     }
   });

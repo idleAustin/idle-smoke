@@ -1,4 +1,4 @@
-/* Pre-shift lobby overlay container, step indicator, OAuth SSO stack, auth tabs, login form, callsign caveat, and recovery panel styles. */
+/* Pre-shift lobby overlay container, OAuth SSO stack, auth tabs, login form, callsign caveat, and recovery panel styles. */
 /* ========================================================
    Smoke Break Lobby — Login, 3-Card Modes, Map & 1v1 Duel
    ======================================================== */
@@ -58,17 +58,6 @@
   border: 1px solid var(--as-border-strong);
 }
 
-.proto-step-indicator {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font: 600 10px var(--as-font-mono);
-  color: var(--as-text-muted);
-  letter-spacing: 0.08em;
-}
-
-.proto-step-indicator .active { color: var(--as-accent-primary); }
 .proto-login-header h2 { margin: 0; font-size: 24px; }
 .proto-b-sso-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
@@ -162,7 +151,15 @@
   transform: none !important;
 }
 
+.proto-callsign-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .proto-field-label input {
+  flex: 1;
+  min-width: 0;
   padding: 10px 12px;
   border-radius: var(--as-radius-sm);
   border: 1px solid var(--as-border-strong);
@@ -173,6 +170,17 @@
 }
 
 .proto-field-label input:focus { border-color: var(--as-accent-primary); box-shadow: 0 0 0 2px var(--as-accent-muted); }
+
+.proto-randomize-btn {
+  padding: 0 12px !important;
+  border-radius: var(--as-radius-sm) !important;
+  border: 1px solid var(--as-border-strong) !important;
+  background: var(--as-bg-elevated) !important;
+  color: var(--as-accent-primary) !important;
+  font: 600 11px var(--as-font-mono) !important;
+  white-space: nowrap;
+  cursor: pointer;
+}
 
 /* Callsign-Only Caveat, Recovery Code Badge & Forgot Password Panel */
 .proto-callsign-caveat {

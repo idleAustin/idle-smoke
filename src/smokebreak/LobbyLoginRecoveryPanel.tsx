@@ -1,7 +1,40 @@
-// Account recovery panel (Email Link, Callsign Recovery Code, Active Browser) and OAuth/recovery badge helpers for LobbyLoginScreen.
+// Account recovery panel (Email Link, Callsign Recovery Code, Active Browser), random callsign generator, and OAuth/recovery badge helpers.
 
 import { useState, type FormEvent } from 'react';
 import { type PlayerProfile } from './shiftStorage';
+
+const CALLSIGN_PREFIXES = [
+  'ASH', 'BAY', 'BOX', 'COB', 'COG', 'DIM', 'DRY', 'ELM',
+  'FIR', 'FOG', 'ICY', 'INK', 'JET', 'KEY', 'LOW', 'MUD',
+  'OAK', 'ODD', 'OIL', 'ORE', 'RED', 'RAW', 'RYE', 'SAW',
+  'SHY', 'SKY', 'SLY', 'SUN', 'TAR', 'TIN', 'WAX', 'ZEN',
+] as const;
+
+const CALLSIGN_NOUNS = [
+  'BEAR', 'BOAR', 'BOLT', 'BUCK', 'CROW', 'CRAB', 'DART', 'DEER',
+  'DOCK', 'DOVE', 'DUCK', 'FAWN', 'FOX', 'FROG', 'GOAT', 'GULL',
+  'HARE', 'HAWK', 'JAY', 'KITE', 'LARK', 'LION', 'LOON', 'LYNX',
+  'MINK', 'MOLE', 'MOTH', 'MULE', 'NEWT', 'OWL', 'PIKE', 'PUMA',
+  'RAM', 'ROOK', 'SEAL', 'STAG', 'SWAN', 'TOAD', 'VOLE', 'WASP',
+  'WOLF', 'WREN',
+] as const;
+
+export function generateRandomCallsign(exclude?: string): string {
+  const normalizedExclude = exclude?.trim().toUpperCase();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const word1 = CALLSIGN_PREFIXES[Math.floor(Math.random() * CALLSIGN_PREFIXES.length)];
+    const word2 = CALLSIGN_NOUNS[Math.floor(Math.random() * CALLSIGN_NOUNS.length)];
+    const num = Math.floor(10 + Math.random() * 90);
+    const candidate = `${word1}-${word2}-${num}`;
+    if (candidate !== normalizedExclude) return candidate;
+  }
+  return 'ASH-LYNX-42';
+}
+
+export function buildDemoRecoveryCode(callsign: string): string {
+  const seed = (callsign || 'OPERATOR').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(4, 'X').slice(0, 4);
+  return `RK-${seed}-84CC`;
+}
 
 export function OAuthIcon({ provider }: { provider: 'apple' | 'google' }) {
   if (provider === 'apple') {

@@ -9,7 +9,11 @@ import {
   normalizeStartedAtUnix,
   verifyShiftReplay,
 } from './shiftVerifier.js';
-import { VALID_TAGLINE_CADENCES, getUnlockedEnvironments } from './starSchema.js';
+import { handleSmokeSessionRoutes } from './smokeSessionRoutes.js';
+import {
+  VALID_TAGLINE_CADENCES,
+  evaluatePromotionAttempt,
+} from './starSchema.js';
 import { formatPlayerProfile } from './storeQueries.js';
 
 /**
@@ -106,14 +110,30 @@ async function authenticateAndValidateShiftContext(authHeader, body, store) {
     return { ok: false, status: 401, error: 'Valid Bearer playerToken required' };
   }
 
-  const environmentId = body.environmentId;
+  let smokeSession = null;
+  if (body.sessionId !== undefined && body.sessionId !== null) {
+    if (typeof body.sessionId !== 'string' || body.sessionId.trim().length === 0) {
+      return { ok: false, status: 400, error: 'Invalid sessionId' };
+    }
+    smokeSession = await store.getSmokeSessionById(body.sessionId.trim());
+    if (!smokeSession || !smokeSession.participants.some(p => p.playerId === String(playerRow.id))) {
+      return { ok: false, status: 400, error: 'Invalid or unjoined Smoke Session' };
+    }
+  }
+
+  const environmentId = smokeSession ? smokeSession.environmentId : body.environmentId;
   if (!isValidEnvironmentId(environmentId)) {
     return { ok: false, status: 400, error: 'Invalid break environmentId' };
   }
 
-  const unlocked = getUnlockedEnvironments(Number(playerRow.lifetime_smoked ?? 0));
-  if (!unlocked.includes(environmentId)) {
-    return { ok: false, status: 400, error: `Environment '${environmentId}' is locked` };
+  const currentProfile = formatPlayerProfile(playerRow);
+  const unlocked = currentProfile.unlockedEnvironments;
+  if (!smokeSession && !unlocked.includes(environmentId)) {
+    return {
+      ok: false,
+      status: 403,
+      error: `environment_locked: Environment '${environmentId}' is locked`,
+    };
   }
 
   const platformResult = normalizePlatform(body.platform ?? playerRow.platform);
@@ -124,9 +144,11 @@ async function authenticateAndValidateShiftContext(authHeader, body, store) {
   return {
     ok: true,
     playerRow,
+    currentProfile,
     environmentId,
     platform: platformResult.platform,
     previousUnlocked: unlocked,
+    smokeSession,
   };
 }
 
@@ -187,7 +209,9 @@ export async function handleApiRequest(req, store, options = {}) {
   if (hasTamperedScoreFields(body)) {
     return {
       status: 400,
-      body: { error: 'Client-submitted score or progression fields are forbidden' },
+      body: {
+        error: 'score_fields_forbidden: Client-submitted score or progression fields are forbidden',
+      },
     };
   }
 
@@ -202,6 +226,16 @@ export async function handleApiRequest(req, store, options = {}) {
     options,
   });
   if (playerAuthResult) return playerAuthResult;
+
+  const smokeSessionResult = await handleSmokeSessionRoutes({
+    method,
+    route,
+    req,
+    body,
+    store,
+    nowUnix,
+  });
+  if (smokeSessionResult) return smokeSessionResult;
 
   if (route === '/api/v1/admin/taglines' && method === 'POST') {
     const adminCheck = await authenticateAdmin(req, store, options);
@@ -284,7 +318,7 @@ export async function handleApiRequest(req, store, options = {}) {
     const ctx = await authenticateAndValidateShiftContext(req.authHeader, body, store);
     if (!ctx.ok) return { status: ctx.status, body: { error: ctx.error } };
 
-    const { playerRow, environmentId, platform, previousUnlocked } = ctx;
+    const { playerRow, currentProfile, environmentId, platform, previousUnlocked, smokeSession } = ctx;
     let shiftId = globalThis.crypto.randomUUID();
     let hasExistingStartedRow = false;
     let startedAt = nowUnix;
@@ -319,6 +353,9 @@ export async function handleApiRequest(req, store, options = {}) {
         }
         if (existingShift.status === 'verified') {
           const leaderboard = await store.getLeaderboard();
+          const currentSession = smokeSession
+            ? await store.getSmokeSessionById(smokeSession.sessionId)
+            : null;
           return {
             status: 200,
             body: {
@@ -331,6 +368,7 @@ export async function handleApiRequest(req, store, options = {}) {
               newlyUnlockedEnvironments: [],
               profile: formatPlayerProfile(playerRow, rawAdminEmails),
               leaderboard,
+              ...(currentSession ? { smokeSession: currentSession } : {}),
             },
           };
         }
@@ -353,6 +391,13 @@ export async function handleApiRequest(req, store, options = {}) {
       return { status: 400, body: { error: replay.error } };
     }
 
+    const promoResult = evaluatePromotionAttempt({
+      environmentId,
+      shiftSmoked: replay.smoked,
+      smokedByEnvironmentBeforeShift: currentProfile.smokedByEnvironment,
+      promotionRoundsClearedBeforeShift: currentProfile.promotionRoundsCleared,
+    });
+
     const updatedPlayerRow = await store.recordVerifiedShift({
       shiftId,
       hasExistingStartedRow,
@@ -364,7 +409,20 @@ export async function handleApiRequest(req, store, options = {}) {
       durationMs: replay.durationMs,
       startedAt,
       completedAt: nowUnix,
+      promotionDelta: promoResult.promotionDelta,
     });
+
+    const updatedSession = smokeSession
+      ? await store.recordSmokeSessionShift({
+          sessionId: smokeSession.sessionId,
+          playerId: String(playerRow.id),
+          shiftId,
+          smoked: replay.smoked,
+          tapCount: replay.tapCount,
+          durationMs: replay.durationMs,
+          completedAt: nowUnix,
+        })
+      : null;
 
     const updatedProfile = formatPlayerProfile(updatedPlayerRow ?? playerRow, rawAdminEmails);
     const newlyUnlockedEnvironments = updatedProfile.unlockedEnvironments.filter(
@@ -384,6 +442,7 @@ export async function handleApiRequest(req, store, options = {}) {
         newlyUnlockedEnvironments,
         profile: updatedProfile,
         leaderboard,
+        ...(updatedSession ? { smokeSession: updatedSession } : {}),
       },
     };
   }

@@ -22,6 +22,14 @@ const TAMPERED_SCORE_KEYS = Object.freeze([
   'shifts_completed',
   'unlockedEnvironments',
   'unlocked_environments',
+  'promotionRoundsCleared',
+  'promotion_rounds_cleared',
+  'smokedByEnvironment',
+  'smoked_by_environment',
+  'unlockedPhase',
+  'unlocked_phase',
+  'isChairman',
+  'is_chairman',
   'tokenHash',
   'token_hash',
   'status',
@@ -40,6 +48,17 @@ const ipRateWindows = new Map();
 export const freshBreak = () => ({ progress: 0, smoked: 0 });
 
 /**
+ * Returns the deterministic in-shift Drag Ratio (drags per cigarette) for the current butt tally.
+ * @param {number} smoked
+ * @returns {12 | 8 | 4}
+ */
+export function getDragRatio(smoked) {
+  if (smoked >= 20) return 4;
+  if (smoked >= 10) return 8;
+  return 12;
+}
+
+/**
  * One press of the space bar (or tap). Presses after time is up are ignored.
  * @param {SmokeBreakState} state
  * @param {number} now
@@ -49,7 +68,8 @@ export function press(state, now) {
   const startedAt = state.startedAt ?? now;
   if (now - startedAt >= BREAK_MS) return state;
   const progress = state.progress + 1;
-  return progress >= PRESSES_PER_CIGARETTE
+  const ratio = getDragRatio(state.smoked);
+  return progress >= ratio
     ? { startedAt, progress: 0, smoked: state.smoked + 1 }
     : { startedAt, progress, smoked: state.smoked };
 }

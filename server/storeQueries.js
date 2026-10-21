@@ -1,5 +1,12 @@
 // Shared SQL queries, shift write-plan builders, and row formatters for SQLite and Cloudflare D1 stores.
-import { buildDateDimRow, getUnlockedEnvironments } from './starSchema.js';
+import {
+  ENVIRONMENT_SEEDS,
+  buildDateDimRow,
+  getUnlockedEnvironments,
+  getUnlockedPhase,
+} from './starSchema.js';
+
+export const SMOKE_SESSION_TTL_SECONDS = 600;
 
 export const INSPECT_QUERIES = Object.freeze({
   playerCount: 'SELECT COUNT(*) AS count FROM player_dim',
@@ -106,19 +113,19 @@ export function formatInspectReport(summary) {
 
 export const API_SQL = Object.freeze({
   insertPlayer: `
-    INSERT INTO player_dim (id, callsign, token_hash, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)
+    INSERT INTO player_dim (id, callsign, token_hash, platform, lifetime_smoked, best_smoked, shifts_completed, promotion_rounds_cleared, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?)
   `,
   selectPlayerByTokenHash: `
     SELECT
-      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at,
+      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, promotion_rounds_cleared, created_at, updated_at,
       (SELECT provider FROM player_auth WHERE player_id = player_dim.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
       (SELECT email FROM player_auth WHERE player_id = player_dim.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_dim
     WHERE token_hash = ?
     UNION ALL
     SELECT
-      p.id, p.callsign, p.platform, p.lifetime_smoked, p.best_smoked, p.shifts_completed, p.created_at, p.updated_at,
+      p.id, p.callsign, p.platform, p.lifetime_smoked, p.best_smoked, p.shifts_completed, p.promotion_rounds_cleared, p.created_at, p.updated_at,
       (SELECT provider FROM player_auth WHERE player_id = p.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
       (SELECT email FROM player_auth WHERE player_id = p.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_auth a
@@ -128,11 +135,17 @@ export const API_SQL = Object.freeze({
   `,
   selectPlayerById: `
     SELECT
-      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, created_at, updated_at,
+      id, callsign, platform, lifetime_smoked, best_smoked, shifts_completed, promotion_rounds_cleared, created_at, updated_at,
       (SELECT provider FROM player_auth WHERE player_id = player_dim.id AND provider IN ('apple', 'google', 'password') ORDER BY updated_at DESC LIMIT 1) AS auth_provider,
       (SELECT email FROM player_auth WHERE player_id = player_dim.id AND email IS NOT NULL ORDER BY updated_at DESC LIMIT 1) AS auth_email
     FROM player_dim
     WHERE id = ?
+  `,
+  selectPlayerSmokedByEnvironment: `
+    SELECT environment_id, COALESCE(SUM(smoked), 0) AS total_smoked
+    FROM shift_fact
+    WHERE player_id = ? AND status = 'verified'
+    GROUP BY environment_id
   `,
   selectAuthIdentity: `
     SELECT provider, provider_sub, player_id, secret_hash, email
@@ -198,6 +211,7 @@ export const API_SQL = Object.freeze({
       lifetime_smoked = lifetime_smoked + ?,
       best_smoked = MAX(best_smoked, ?),
       shifts_completed = shifts_completed + 1,
+      promotion_rounds_cleared = MIN(9, promotion_rounds_cleared + ?),
       updated_at = ?
     WHERE id = ?
   `,
@@ -235,11 +249,81 @@ export const API_SQL = Object.freeze({
     DELETE FROM tagline_dim
     WHERE id = ?
   `,
+  deletePlayerSmokeSessionParticipants: `
+    DELETE FROM smoke_session_participant
+    WHERE player_id = ?
+  `,
+  deletePlayerSmokeSessions: `
+    DELETE FROM smoke_session
+    WHERE host_player_id = ?
+  `,
+  selectActiveSessionCodes: `
+    SELECT DISTINCT code
+    FROM smoke_session
+    WHERE status IN ('waiting', 'active') AND created_at >= ?
+  `,
+  insertSmokeSession: `
+    INSERT INTO smoke_session (id, code, host_player_id, environment_id, status, created_at, started_at, completed_at)
+    VALUES (?, ?, ?, ?, 'waiting', ?, NULL, NULL)
+  `,
+  upsertSmokeSessionParticipant: `
+    INSERT INTO smoke_session_participant (session_id, player_id, joined_at, shift_id, smoked, tap_count, duration_ms, completed_at)
+    VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL)
+    ON CONFLICT(session_id, player_id) DO NOTHING
+  `,
+  selectSmokeSessionById: `
+    SELECT id, code, host_player_id, environment_id, status, created_at, started_at, completed_at
+    FROM smoke_session
+    WHERE id = ?
+  `,
+  selectSmokeSessionByCode: `
+    SELECT id, code, host_player_id, environment_id, status, created_at, started_at, completed_at
+    FROM smoke_session
+    WHERE code = ? AND created_at >= ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `,
+  selectSmokeSessionParticipants: `
+    SELECT
+      sp.session_id,
+      sp.player_id,
+      p.callsign,
+      sp.joined_at,
+      sp.shift_id,
+      sp.smoked,
+      sp.tap_count,
+      sp.duration_ms,
+      sp.completed_at
+    FROM smoke_session_participant sp
+    INNER JOIN player_dim p ON p.id = sp.player_id
+    WHERE sp.session_id = ?
+    ORDER BY sp.joined_at ASC
+  `,
+  startSmokeSession: `
+    UPDATE smoke_session
+    SET status = 'active', started_at = ?
+    WHERE id = ? AND host_player_id = ? AND status = 'waiting'
+  `,
+  recordSmokeSessionParticipantShift: `
+    UPDATE smoke_session_participant
+    SET shift_id = ?, smoked = ?, tap_count = ?, duration_ms = ?, completed_at = ?
+    WHERE session_id = ? AND player_id = ?
+  `,
+  completeSmokeSessionIfAllDone: `
+    UPDATE smoke_session
+    SET status = 'completed', completed_at = ?
+    WHERE id = ?
+      AND status != 'completed'
+      AND NOT EXISTS (
+        SELECT 1 FROM smoke_session_participant
+        WHERE session_id = smoke_session.id AND completed_at IS NULL
+      )
+  `,
 });
 
 /**
  * Shared SQL & parameter plan for recording a verified shift across SQLite and D1.
- * @param {{ shiftId: string, hasExistingStartedRow: boolean, playerId: string, environmentId: string, platform: string, smoked: number, tapCount: number, durationMs: number, startedAt: number, completedAt: number }} params
+ * @param {{ shiftId: string, hasExistingStartedRow: boolean, playerId: string, environmentId: string, platform: string, smoked: number, tapCount: number, durationMs: number, startedAt: number, completedAt: number, promotionDelta?: 0 | 1 | number }} params
  */
 export function buildVerifiedShiftWritePlan(params) {
   const dateRow = buildDateDimRow(new Date(params.completedAt * 1000));
@@ -276,7 +360,14 @@ export function buildVerifiedShiftWritePlan(params) {
         params.startedAt,
         params.completedAt,
       ];
-  const playerArgs = [params.smoked, params.smoked, params.completedAt, params.playerId];
+  const safePromotionDelta = params.promotionDelta === 1 ? 1 : 0;
+  const playerArgs = [
+    params.smoked,
+    params.smoked,
+    safePromotionDelta,
+    params.completedAt,
+    params.playerId,
+  ];
   return { dateArgs, shiftSql, shiftArgs, playerArgs };
 }
 
@@ -327,11 +418,67 @@ export function isEmailInAdminList(email, rawAdminEmails) {
 }
 
 /**
+ * Normalizes an array of `{ environment_id, total_smoked }` rows or an object map
+ * into a complete 12-sector `{ [environmentId]: count }` dictionary.
+ * @param {Array<Record<string, unknown>> | Record<string, unknown> | null | undefined} input
+ * @param {number} [fallbackLifetimeSmoked]
+ * @returns {Record<string, number>}
+ */
+export function buildSmokedByEnvironmentMap(input, fallbackLifetimeSmoked = 0) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  for (const env of ENVIRONMENT_SEEDS) {
+    out[env.id] = 0;
+  }
+  if (Array.isArray(input)) {
+    for (const row of input) {
+      const envId = String(row?.environment_id ?? '');
+      if (envId in out) {
+        const count = Number(row?.total_smoked ?? 0);
+        out[envId] = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+      }
+    }
+  } else if (input && typeof input === 'object') {
+    for (const env of ENVIRONMENT_SEEDS) {
+      const count = Number(/** @type {Record<string, unknown>} */ (input)[env.id] ?? 0);
+      out[envIdOrFallback(env.id)] = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+    }
+  }
+  if (
+    Number.isFinite(fallbackLifetimeSmoked) &&
+    fallbackLifetimeSmoked > 0 &&
+    Object.values(out).every(v => v === 0)
+  ) {
+    out.alleyway = Math.floor(fallbackLifetimeSmoked);
+  }
+  return out;
+}
+
+/** @param {string} id */
+function envIdOrFallback(id) {
+  return id;
+}
+
+/**
  * @param {Record<string, unknown>} row
  * @param {string} [rawAdminEmails]
  */
 export function formatPlayerProfile(row, rawAdminEmails) {
   const lifetimeSmoked = Number(row.lifetime_smoked ?? 0);
+  const rawPromo = Number(row.promotion_rounds_cleared ?? 0);
+  const promotionRoundsCleared = Number.isFinite(rawPromo)
+    ? Math.max(0, Math.min(9, Math.floor(rawPromo)))
+    : 0;
+  const rawSmokedByEnv = row.smoked_by_environment ?? row.smokedByEnvironment;
+  const smokedByEnvironment = buildSmokedByEnvironmentMap(
+    /** @type {Record<string, unknown> | Array<Record<string, unknown>> | undefined} */ (rawSmokedByEnv),
+    lifetimeSmoked
+  );
+  const unlockedPhase = getUnlockedPhase(promotionRoundsCleared);
+  const isChairman = promotionRoundsCleared >= 9;
+  const unlockedEnvironments = rawSmokedByEnv
+    ? getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared })
+    : getUnlockedEnvironments(lifetimeSmoked);
   const authProvider = row.auth_provider ? String(row.auth_provider) : undefined;
   const authEmail = row.auth_email ? String(row.auth_email) : undefined;
   const isAdmin =
@@ -343,7 +490,11 @@ export function formatPlayerProfile(row, rawAdminEmails) {
     lifetimeSmoked,
     bestSmoked: Number(row.best_smoked ?? 0),
     shiftsCompleted: Number(row.shifts_completed ?? 0),
-    unlockedEnvironments: getUnlockedEnvironments(lifetimeSmoked),
+    smokedByEnvironment,
+    promotionRoundsCleared,
+    unlockedPhase,
+    isChairman,
+    unlockedEnvironments,
     ...(authProvider ? { authProvider } : {}),
     ...(authEmail ? { authEmail } : {}),
     ...(isAdmin ? { isAdmin: true } : {}),
@@ -373,5 +524,62 @@ export function formatLeaderboardResponse(summary) {
       totalShifts: summary.totals.totalVerifiedShifts,
       totalSmoked: summary.totals.totalSmoked,
     },
+  };
+}
+
+/**
+ * Formats a smoke_session row and its joined participant rows into a ranked SmokeSession payload.
+ * @param {Record<string, unknown> | null | undefined} sessionRow
+ * @param {Array<Record<string, unknown>>} [participantRows]
+ */
+export function formatSmokeSession(sessionRow, participantRows = []) {
+  if (!sessionRow) return null;
+  const hostPlayerId = String(sessionRow.host_player_id);
+  const mapped = participantRows.map(r => {
+    const finished = r.completed_at !== null && r.completed_at !== undefined;
+    return {
+      playerId: String(r.player_id),
+      callsign: String(r.callsign),
+      isHost: String(r.player_id) === hostPlayerId,
+      joinedAt: Number(r.joined_at ?? 0),
+      finished,
+      smoked: r.smoked !== null && r.smoked !== undefined ? Number(r.smoked) : null,
+      tapCount: r.tap_count !== null && r.tap_count !== undefined ? Number(r.tap_count) : null,
+      durationMs: r.duration_ms !== null && r.duration_ms !== undefined ? Number(r.duration_ms) : null,
+      completedAt: finished ? Number(r.completed_at) : null,
+    };
+  });
+
+  mapped.sort((a, b) => {
+    if (a.finished !== b.finished) return a.finished ? -1 : 1;
+    if (a.finished && b.finished) {
+      const smokedDiff = (b.smoked ?? 0) - (a.smoked ?? 0);
+      if (smokedDiff !== 0) return smokedDiff;
+      const tapDiff = (b.tapCount ?? 0) - (a.tapCount ?? 0);
+      if (tapDiff !== 0) return tapDiff;
+      const completedDiff = (a.completedAt ?? 0) - (b.completedAt ?? 0);
+      if (completedDiff !== 0) return completedDiff;
+    }
+    if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+    return a.callsign.localeCompare(b.callsign);
+  });
+
+  return {
+    sessionId: String(sessionRow.id),
+    code: String(sessionRow.code),
+    hostPlayerId,
+    environmentId: String(sessionRow.environment_id),
+    status: String(sessionRow.status),
+    createdAt: Number(sessionRow.created_at ?? 0),
+    startedAt:
+      sessionRow.started_at !== null && sessionRow.started_at !== undefined
+        ? Number(sessionRow.started_at)
+        : null,
+    completedAt:
+      sessionRow.completed_at !== null && sessionRow.completed_at !== undefined
+        ? Number(sessionRow.completed_at)
+        : null,
+    participants: mapped.map((p, idx) => ({ ...p, rank: idx + 1 })),
   };
 }

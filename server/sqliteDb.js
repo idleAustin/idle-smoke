@@ -5,22 +5,27 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_TAGLINE_CADENCE,
   ENSURE_DEFAULT_CADENCE_SQL,
+  ENVIRONMENT_DIM_DDL,
   ENVIRONMENT_SEEDS,
   INSERT_DATE_DIM_SQL,
   MARK_TAGLINES_SEEDED_SQL,
+  SCHEMA_VERSION,
   SEED_TAGLINE_IF_INITIAL_SQL,
   SQLITE_PRAGMA_STATEMENTS,
   STAR_SCHEMA_DDL,
   TAGLINE_SEEDS,
   UPSERT_ENVIRONMENT_DIM_SQL,
+  UPSERT_SCHEMA_VERSION_SQL,
   buildDateDimRow,
 } from './starSchema.js';
 import {
   API_SQL,
   INSPECT_QUERIES,
   buildRejectedShiftWritePlan,
+  buildSmokedByEnvironmentMap,
   buildVerifiedShiftWritePlan,
   formatLeaderboardResponse,
+  formatSmokeSession,
   formatTaglineRow,
   normalizeInspectSummary,
 } from './storeQueries.js';
@@ -52,7 +57,50 @@ export function ensureDateDim(db, date = new Date()) {
 function seedEnvironmentDim(db) {
   const stmt = db.prepare(UPSERT_ENVIRONMENT_DIM_SQL);
   for (const env of ENVIRONMENT_SEEDS) {
-    stmt.run(env.id, env.name, env.sector, env.unlock_smoked_required);
+    stmt.run(
+      env.id,
+      env.name,
+      env.sector,
+      env.phase,
+      env.sector_order,
+      env.sector_quota_required,
+      env.unlock_smoked_required
+    );
+  }
+}
+
+/**
+ * Non-destructively migrates pre-v3 SQLite tables (`player_dim` and `environment_dim`)
+ * to Star Schema v3 while preserving all `player_dim` and `shift_fact` rows.
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function migrateSqliteToV3(db) {
+  const playerCols = db.prepare('PRAGMA table_info(player_dim)').all();
+  if (
+    playerCols.length > 0 &&
+    !playerCols.some(col => String(col.name) === 'promotion_rounds_cleared')
+  ) {
+    db.exec(
+      'ALTER TABLE player_dim ADD COLUMN promotion_rounds_cleared INTEGER NOT NULL DEFAULT 0 CHECK (promotion_rounds_cleared BETWEEN 0 AND 9);'
+    );
+  }
+
+  const envCols = db.prepare('PRAGMA table_info(environment_dim)').all();
+  if (
+    envCols.length > 0 &&
+    !envCols.some(col => String(col.name) === 'sector_quota_required')
+  ) {
+    db.exec('BEGIN IMMEDIATE;');
+    try {
+      db.exec('PRAGMA defer_foreign_keys = ON;');
+      db.exec('DROP TABLE IF EXISTS environment_dim;');
+      db.exec(ENVIRONMENT_DIM_DDL);
+      seedEnvironmentDim(db);
+      db.exec('COMMIT;');
+    } catch (err) {
+      db.exec('ROLLBACK;');
+      throw err;
+    }
   }
 }
 
@@ -82,10 +130,12 @@ export function openSqliteDb(dbPath = process.env.SQLITE_DB_PATH || DEFAULT_SQLI
     db.exec(pragma);
   }
   db.exec(STAR_SCHEMA_DDL);
+  migrateSqliteToV3(db);
   const nowDate = options.now ? new Date(options.now) : new Date();
   const nowUnix = Math.floor(nowDate.getTime() / 1000);
   seedEnvironmentDim(db);
   seedTaglineDim(db, nowUnix);
+  db.prepare(UPSERT_SCHEMA_VERSION_SQL).run(SCHEMA_VERSION, nowUnix);
   ensureDateDim(db, nowDate);
   return db;
 }
@@ -127,25 +177,41 @@ export function inspectSqliteDb(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 export function createSqliteStore(db) {
+  /**
+   * @param {Record<string, unknown> | undefined | null} row
+   */
+  function hydratePlayerRow(row) {
+    if (!row) return null;
+    const envRows = db
+      .prepare(API_SQL.selectPlayerSmokedByEnvironment)
+      .all(String(row.id));
+    return {
+      ...row,
+      smoked_by_environment: buildSmokedByEnvironmentMap(envRows),
+    };
+  }
+
   return {
     /**
      * @param {{ id: string, callsign: string, tokenHash: string, platform: string, nowUnix: number }} params
      */
     async createPlayer({ id, callsign, tokenHash, platform, nowUnix }) {
       db.prepare(API_SQL.insertPlayer).run(id, callsign, tokenHash, platform, nowUnix, nowUnix);
-      return db.prepare(API_SQL.selectPlayerById).get(id) ?? null;
+      return hydratePlayerRow(db.prepare(API_SQL.selectPlayerById).get(id) ?? null);
     },
     /**
      * @param {string} tokenHash
      */
     async getPlayerByTokenHash(tokenHash) {
-      return db.prepare(API_SQL.selectPlayerByTokenHash).get(tokenHash, tokenHash) ?? null;
+      return hydratePlayerRow(
+        db.prepare(API_SQL.selectPlayerByTokenHash).get(tokenHash, tokenHash) ?? null
+      );
     },
     /**
      * @param {string} playerId
      */
     async getPlayerById(playerId) {
-      return db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null;
+      return hydratePlayerRow(db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null);
     },
     /**
      * @param {string} provider
@@ -175,7 +241,7 @@ export function createSqliteStore(db) {
      */
     async updatePlayerCallsign(playerId, callsign, nowUnix) {
       db.prepare(API_SQL.updatePlayerCallsign).run(callsign, nowUnix, playerId);
-      return db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null;
+      return hydratePlayerRow(db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null);
     },
     /**
      * @param {string} playerId
@@ -183,6 +249,8 @@ export function createSqliteStore(db) {
     async deletePlayer(playerId) {
       db.exec('BEGIN IMMEDIATE');
       try {
+        db.prepare(API_SQL.deletePlayerSmokeSessionParticipants).run(playerId);
+        db.prepare(API_SQL.deletePlayerSmokeSessions).run(playerId);
         db.prepare(API_SQL.deletePlayerShifts).run(playerId);
         db.prepare(API_SQL.deletePlayerAuth).run(playerId);
         db.prepare(API_SQL.deletePlayerDim).run(playerId);
@@ -235,7 +303,7 @@ export function createSqliteStore(db) {
         db.exec('ROLLBACK');
         throw err;
       }
-      return db.prepare(API_SQL.selectPlayerById).get(params.playerId) ?? null;
+      return hydratePlayerRow(db.prepare(API_SQL.selectPlayerById).get(params.playerId) ?? null);
     },
     async getLeaderboard() {
       return formatLeaderboardResponse(inspectSqliteDb(db));
@@ -298,6 +366,100 @@ export function createSqliteStore(db) {
     async setTaglineCadence(cadence, nowUnix) {
       db.prepare(API_SQL.upsertTaglineCadence).run(cadence, nowUnix);
       return this.getAllTaglines();
+    },
+    /**
+     * @param {number} minCreatedAtUnix
+     */
+    async getActiveSessionCodes(minCreatedAtUnix) {
+      const rows = db.prepare(API_SQL.selectActiveSessionCodes).all(minCreatedAtUnix);
+      return rows.map(r => String(r.code));
+    },
+    /**
+     * @param {string} sessionId
+     */
+    async getSmokeSessionById(sessionId) {
+      const sessionRow = db.prepare(API_SQL.selectSmokeSessionById).get(sessionId);
+      if (!sessionRow) return null;
+      const participants = db.prepare(API_SQL.selectSmokeSessionParticipants).all(sessionId);
+      return formatSmokeSession(sessionRow, participants);
+    },
+    /**
+     * @param {string} code
+     * @param {number} minCreatedAtUnix
+     */
+    async getSmokeSessionByCode(code, minCreatedAtUnix) {
+      const sessionRow = db.prepare(API_SQL.selectSmokeSessionByCode).get(code, minCreatedAtUnix);
+      if (!sessionRow) return null;
+      const participants = db
+        .prepare(API_SQL.selectSmokeSessionParticipants)
+        .all(String(sessionRow.id));
+      return formatSmokeSession(sessionRow, participants);
+    },
+    /**
+     * @param {{ sessionId: string, code: string, hostPlayerId: string, environmentId: string, nowUnix: number }} params
+     */
+    async createSmokeSession({ sessionId, code, hostPlayerId, environmentId, nowUnix }) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(API_SQL.insertSmokeSession).run(
+          sessionId,
+          code,
+          hostPlayerId,
+          environmentId,
+          nowUnix
+        );
+        db.prepare(API_SQL.upsertSmokeSessionParticipant).run(sessionId, hostPlayerId, nowUnix);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return this.getSmokeSessionById(sessionId);
+    },
+    /**
+     * @param {{ sessionId: string, playerId: string, nowUnix: number }} params
+     */
+    async joinSmokeSession({ sessionId, playerId, nowUnix }) {
+      db.prepare(API_SQL.upsertSmokeSessionParticipant).run(sessionId, playerId, nowUnix);
+      return this.getSmokeSessionById(sessionId);
+    },
+    /**
+     * @param {{ sessionId: string, hostPlayerId: string, nowUnix: number }} params
+     */
+    async startSmokeSession({ sessionId, hostPlayerId, nowUnix }) {
+      db.prepare(API_SQL.startSmokeSession).run(nowUnix, sessionId, hostPlayerId);
+      return this.getSmokeSessionById(sessionId);
+    },
+    /**
+     * @param {{ sessionId: string, playerId: string, shiftId: string, smoked: number, tapCount: number, durationMs: number, completedAt: number }} params
+     */
+    async recordSmokeSessionShift({
+      sessionId,
+      playerId,
+      shiftId,
+      smoked,
+      tapCount,
+      durationMs,
+      completedAt,
+    }) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(API_SQL.recordSmokeSessionParticipantShift).run(
+          shiftId,
+          smoked,
+          tapCount,
+          durationMs,
+          completedAt,
+          sessionId,
+          playerId
+        );
+        db.prepare(API_SQL.completeSmokeSessionIfAllDone).run(completedAt, sessionId);
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
+      }
+      return this.getSmokeSessionById(sessionId);
     },
   };
 }

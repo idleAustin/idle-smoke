@@ -17,6 +17,30 @@
   gap: 12px;
 }
 
+.proto-map-title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.hud-panel button.proto-nav-back-btn,
+.proto-nav-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+  font: 600 11.5px var(--as-font-mono);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .proto-map-topbar h2 {
   margin: 4px 0 0;
   font-size: 20px;
@@ -262,66 +286,235 @@
   gap: 6px;
 }
 
-/* --- Head-to-Head 1v1 Lobby --- */
+/* --- Smoke Session 2-Digit Room Code Lobby & 3-2-1 Countdown --- */
 .proto-h2h-shell {
-  width: min(640px, 100%);
+  width: min(740px, 100%);
   padding: 24px;
   display: grid;
   gap: 18px;
-  background: rgba(14, 14, 18, 0.96);
+  background: var(--as-bg-surface);
   border: 1px solid var(--as-border-strong);
 }
 
-.proto-h2h-vs-banner {
+.proto-session-error {
+  padding: 10px 14px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-status-error);
+  background: var(--as-bg-base);
+  color: var(--as-status-error);
+  font: 600 12px var(--as-font-mono);
+}
+
+.proto-session-split-grid {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.proto-session-card {
+  padding: 16px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-base);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.proto-fighter-card {
+.proto-session-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.proto-session-join-form {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.proto-session-code-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-accent-primary);
+  font: 800 24px var(--as-font-mono);
+  letter-spacing: 0.25em;
+  text-align: center;
+}
+
+.proto-session-waiting {
+  display: grid;
+  gap: 16px;
+}
+
+.proto-session-code-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px;
   border-radius: var(--as-radius-md);
   border: 1px solid var(--as-accent-primary);
   background: var(--as-bg-base);
-  display: grid;
-  gap: 4px;
 }
 
-.proto-fighter-card.rival {
-  border-color: var(--as-status-error);
-}
-
-.proto-fighter-card strong {
-  font: 800 20px var(--as-font-mono);
-}
-
-.proto-fighter-card small {
-  font: 500 11px var(--as-font-mono);
-  color: var(--as-text-secondary);
-}
-
-.proto-vs-badge {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+.proto-session-code-display {
+  padding: 10px 18px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-accent-primary);
+  background: var(--as-accent-muted);
   display: grid;
   place-items: center;
-  background: var(--as-bg-elevated);
-  border: 1px solid var(--as-border-strong);
-  font: 800 12px var(--as-font-mono);
-  color: var(--as-accent-primary);
+  min-width: 96px;
 }
 
-.proto-h2h-rival-picker {
+.proto-session-code-display strong {
+  font: 800 32px var(--as-font-mono);
+  color: var(--as-accent-primary);
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+}
+
+.proto-session-roster {
+  padding: 12px 14px;
+  border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-subtle);
+  background: var(--as-bg-base);
+}
+
+.proto-session-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.proto-session-actions > .ship,
+.proto-session-actions > .proto-mode-meta-box {
+  flex: 1;
+}
+
+.proto-countdown-overlay {
   display: grid;
+  place-items: center;
+  z-index: 80;
+}
+
+.proto-countdown-card {
+  min-width: 280px;
+  padding: 28px 36px;
+  display: grid;
+  place-items: center;
   gap: 8px;
+  text-align: center;
+  border: 2px solid var(--as-accent-primary);
+}
+
+.proto-countdown-digit {
+  font: 800 72px var(--as-font-mono);
+  color: var(--as-accent-primary);
+  line-height: 1;
 }
 
 @media (max-width: 860px) {
   .proto-modes-three-col,
   .proto-map-layout,
-  .proto-h2h-vs-banner {
+  .proto-session-split-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- Ticket 04 In-App Prototype: 3-Phase Strata, Promotion Gauntlet & Variants A/B/C --- */
+.proto-phase-strata-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.hud-panel button.proto-phase-tab,
+.proto-phase-tab {
+  display: grid; gap: 4px; padding: 10px 14px; border-radius: var(--as-radius-md);
+  border: 1px solid var(--as-border-strong); background: var(--as-bg-base);
+  color: var(--as-text-primary); text-align: left; cursor: pointer;
+}
+.hud-panel button.proto-phase-tab.active,
+.proto-phase-tab.active {
+  border-color: var(--as-accent-primary); background: var(--as-accent-muted);
+  box-shadow: 0 0 0 1px var(--as-accent-primary);
+}
+.proto-phase-tab-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.proto-phase-tab strong { font: 700 14px var(--as-font-heading); color: var(--as-text-primary); }
+.proto-phase-tab small { font: 500 11px var(--as-font-body); color: var(--as-text-secondary); }
+
+.proto-hype-telemetry-strip {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 12px; padding: 10px 14px; border-radius: var(--as-radius-md);
+  background: var(--as-bg-surface); border: 1px solid var(--as-border-subtle);
+}
+.proto-hype-copy-col { display: grid; gap: 2px; }
+.proto-hype-copy-col strong { font: 600 13px var(--as-font-body); color: var(--as-accent-primary); }
+.proto-hype-badges { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.proto-map-pin-promotion { border-color: var(--as-status-warning); background: var(--as-bg-elevated); }
+.proto-map-pin-promotion .proto-pin-code { color: var(--as-status-warning); }
+.proto-map-pin-promotion .proto-pin-dot { background: var(--as-status-warning); color: var(--as-bg-base); }
+.proto-map-pin-promotion.selected { border-color: var(--as-status-warning); box-shadow: 0 0 0 2px var(--as-status-warning); }
+
+.proto-inspector-chip-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.proto-inspector-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.proto-lighting-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px;
+  border-radius: var(--as-radius-pill); background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle); font: 600 9.5px var(--as-font-mono); color: var(--as-text-muted);
+}
+.proto-swatch { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--as-border-strong); }
+.proto-sector-quota-meter {
+  display: grid; gap: 5px; padding: 8px 10px; border-radius: var(--as-radius-sm);
+  background: var(--as-bg-surface); border: 1px solid var(--as-border-subtle);
+}
+.proto-sector-quota-labels { display: flex; justify-content: space-between; font: 600 10px var(--as-font-mono); color: var(--as-text-secondary); }
+.proto-inspector-cta-stack { display: grid; gap: 8px; }
+
+.proto-promo-gauntlet-box {
+  display: grid; gap: 10px; padding: 12px; border-radius: var(--as-radius-md);
+  background: var(--as-bg-surface); border: 1px solid var(--as-status-warning);
+}
+.proto-promo-gauntlet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.proto-promo-gauntlet-head h4 { margin: 2px 0 0; font-size: 15px; }
+.proto-promo-rounds-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.proto-promo-round-cell {
+  display: grid; gap: 2px; padding: 8px; border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base); border: 1px solid var(--as-border-strong); text-align: center;
+}
+.proto-promo-round-cell.cleared { border-color: var(--as-accent-primary); background: var(--as-accent-muted); }
+.proto-promo-round-cell.current { border-color: var(--as-status-warning); background: var(--as-status-warning-bg); }
+.proto-promo-round-cell strong { font: 700 13px var(--as-font-mono); }
+.proto-promo-round-cell small { font: 500 9px var(--as-font-mono); color: var(--as-text-muted); }
+.proto-promo-sim-actions { display: grid; gap: 6px; }
+
+/* Mobile Responsive Reformatting (<= 640px per 08.Responsive-Access.md) */
+@media (max-width: 640px) {
+  .proto-overlay.proto-variant-a-map,
+  .proto-overlay.proto-modes-screen {
+    align-items: flex-start;
+    padding: calc(10px + var(--safe-area-top)) calc(10px + var(--safe-area-right))
+      calc(84px + var(--safe-area-bottom)) calc(10px + var(--safe-area-left));
+  }
+  .proto-map-shell { padding: 14px; gap: 12px; }
+  .proto-map-topbar h2 { font-size: 17px; }
+  .proto-phase-strata-bar { grid-template-columns: 1fr; gap: 6px; }
+  .hud-panel button.proto-phase-tab, .proto-phase-tab { min-height: 44px; padding: 8px 12px; }
+  .proto-phase-tab small { display: none; }
+  /* Convert desktop 2D coordinate pins into a non-overlapping 2x2 + full-width Promotion stack on mobile */
+  .proto-blueprint-canvas {
+    min-height: 0; padding: 12px; display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  }
+  .proto-map-paths { display: none; }
+  .proto-map-pin, .proto-map-pin:hover:not(.locked) {
+    position: relative; left: auto !important; top: auto !important;
+    transform: none !important; min-width: 0; min-height: 54px; width: 100%; z-index: 2;
+  }
+  .proto-map-pin-promotion { grid-column: 1 / -1; }
+  .proto-pin-dot { top: 8px; right: 8px; width: 20px; height: 20px; font-size: 10px; }
+  .proto-a-stats-row, .proto-promo-rounds-grid { grid-template-columns: 1fr; }
 }

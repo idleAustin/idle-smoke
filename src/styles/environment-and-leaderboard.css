@@ -360,3 +360,65 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+
+.smoke-brief-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.smoke-drag-ratio-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--as-radius-pill);
+  font: 700 9.5px var(--as-font-mono);
+  letter-spacing: 0.06em;
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  color: var(--as-text-secondary);
+}
+.smoke-drag-ratio-badge.ratio-8 {
+  border-color: var(--as-accent-primary);
+  background: var(--as-accent-muted);
+  color: var(--as-accent-primary);
+}
+.smoke-drag-ratio-badge.ratio-4 {
+  border-color: var(--as-status-warning);
+  background: var(--as-status-warning-bg);
+  color: var(--as-status-warning);
+}
+.smoke-promo-target-pill {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-status-warning);
+  background: var(--as-status-warning-bg);
+  color: var(--as-status-warning);
+  font: 700 10px var(--as-font-mono);
+  letter-spacing: 0.04em;
+}
+.smoke-hype-copy {
+  margin: 0 0 6px !important;
+  color: var(--as-accent-primary) !important;
+  font: 600 12px var(--as-font-body) !important;
+}
+.env-phase-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hud-panel button.env-phase-pill,
+.env-phase-pill {
+  min-height: 24px !important;
+  padding: 2px 7px !important;
+  font: 700 10px var(--as-font-mono) !important;
+}
+.hud-panel button.env-phase-pill.active,
+.env-phase-pill.active {
+  border-color: var(--as-accent-primary);
+  background: var(--as-accent-muted);
+  color: var(--as-accent-primary);
+}
+

@@ -1,9 +1,16 @@
 // Client-side types, platform storage hydration, profile/leaderboard caches, and offline shift queue persistence.
 
 import { normalizeStartedAtUnix, verifyShiftReplay } from '../../server/shiftVerifier.js';
+import { buildSmokedByEnvironmentMap } from '../../server/storeQueries.js';
 import { getPlatform, type PlatformId } from '../platform';
 import { platformStorage } from '../platform/storage';
-import { type EnvironmentId, getUnlockedEnvironments, projectShiftProgression } from './smokeBreak';
+import {
+  type EnvironmentId,
+  getUnlockedEnvironments,
+  getUnlockedPhase,
+  projectShiftProgression,
+} from './smokeBreak';
+import { type SmokeSession } from './smokeSessionClient';
 
 export type AuthProviderId = 'apple' | 'google' | 'password' | 'guest';
 export type TaglineCadence = '60s' | '5m' | '15m' | '1h' | 'daily' | 'per_shift';
@@ -27,6 +34,10 @@ export interface PlayerProfile {
   lifetimeSmoked: number;
   bestSmoked: number;
   shiftsCompleted: number;
+  smokedByEnvironment: Record<EnvironmentId, number>;
+  promotionRoundsCleared: number;
+  unlockedPhase: 1 | 2 | 3;
+  isChairman: boolean;
   unlockedEnvironments: EnvironmentId[];
   authProvider?: AuthProviderId;
   authEmail?: string;
@@ -70,6 +81,7 @@ export interface ShiftFinishResult {
   newlyUnlockedEnvironments: EnvironmentId[];
   profile: PlayerProfile;
   leaderboard: LeaderboardResponse;
+  smokeSession?: SmokeSession | null;
 }
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -92,6 +104,10 @@ const DEFAULT_PROFILE: PlayerProfile = {
   lifetimeSmoked: 0,
   bestSmoked: 0,
   shiftsCompleted: 0,
+  smokedByEnvironment: buildSmokedByEnvironmentMap(null) as Record<EnvironmentId, number>,
+  promotionRoundsCleared: 0,
+  unlockedPhase: 1,
+  isChairman: false,
   unlockedEnvironments: ['alleyway'],
 };
 
@@ -184,9 +200,22 @@ function normalizePlatformId(value: unknown): PlatformId {
 
 export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
   const lifetimeSmoked = Number(raw.lifetimeSmoked ?? 0);
+  const rawPromo = Number(raw.promotionRoundsCleared ?? raw.promotion_rounds_cleared ?? 0);
+  const promotionRoundsCleared = Number.isFinite(rawPromo)
+    ? Math.max(0, Math.min(9, Math.floor(rawPromo)))
+    : 0;
+  const rawSmokedByEnv = raw.smokedByEnvironment ?? raw.smoked_by_environment;
+  const smokedByEnvironment = buildSmokedByEnvironmentMap(
+    rawSmokedByEnv as Record<string, unknown> | undefined,
+    lifetimeSmoked
+  ) as Record<EnvironmentId, number>;
+  const unlockedPhase = getUnlockedPhase(promotionRoundsCleared);
+  const isChairman = promotionRoundsCleared >= 9;
   const unlockedRaw = Array.isArray(raw.unlockedEnvironments)
     ? (raw.unlockedEnvironments as EnvironmentId[])
-    : getUnlockedEnvironments(lifetimeSmoked);
+    : rawSmokedByEnv
+      ? (getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared }) as EnvironmentId[])
+      : (getUnlockedEnvironments(lifetimeSmoked) as EnvironmentId[]);
   const providerRaw = raw.authProvider;
   const authProvider: AuthProviderId | undefined =
     providerRaw === 'apple' || providerRaw === 'google' || providerRaw === 'password'
@@ -201,6 +230,10 @@ export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
     lifetimeSmoked,
     bestSmoked: Number(raw.bestSmoked ?? 0),
     shiftsCompleted: Number(raw.shiftsCompleted ?? 0),
+    smokedByEnvironment,
+    promotionRoundsCleared,
+    unlockedPhase,
+    isChairman,
     unlockedEnvironments: unlockedRaw.length > 0 ? unlockedRaw : ['alleyway'],
     ...(authProvider ? { authProvider } : {}),
     ...(authEmail ? { authEmail } : {}),
@@ -327,13 +360,23 @@ export function enqueueOfflineShift(params: {
     params.baseProfile.lifetimeSmoked,
     params.baseProfile.bestSmoked,
     params.baseProfile.unlockedEnvironments,
-    replay.smoked
+    replay.smoked,
+    {
+      environmentId: effectiveEnvironmentId,
+      smokedByEnvironment: params.baseProfile.smokedByEnvironment,
+      promotionRoundsCleared: params.baseProfile.promotionRoundsCleared,
+    }
   );
   const optimisticProfile: PlayerProfile = {
     ...params.baseProfile,
     lifetimeSmoked: projected.lifetimeSmoked,
     bestSmoked: projected.bestSmoked,
     shiftsCompleted: params.baseProfile.shiftsCompleted + 1,
+    smokedByEnvironment: projected.smokedByEnvironment ?? params.baseProfile.smokedByEnvironment,
+    promotionRoundsCleared:
+      projected.promotionRoundsCleared ?? params.baseProfile.promotionRoundsCleared,
+    unlockedPhase: projected.unlockedPhase ?? params.baseProfile.unlockedPhase,
+    isChairman: projected.isChairman ?? params.baseProfile.isChairman,
     unlockedEnvironments: projected.unlockedEnvironments,
   };
   setCachedProfile(optimisticProfile);

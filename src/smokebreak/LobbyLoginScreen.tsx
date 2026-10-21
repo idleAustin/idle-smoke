@@ -1,13 +1,11 @@
 // Universal account sign-in screen supporting Apple ID, Google OAuth popup flow, email-first / callsign-only password auth, and account recovery.
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ForgotPasswordPanel, OAuthIcon, RecoveryCodeBadge } from './LobbyLoginRecoveryPanel';
+import {
+  ForgotPasswordPanel, OAuthIcon, RecoveryCodeBadge,
+  buildDemoRecoveryCode, generateRandomCallsign,
+} from './LobbyLoginRecoveryPanel';
 import { type PlayerProfile } from './shiftStorage';
-
-function buildDemoRecoveryCode(callsign: string): string {
-  const seed = (callsign || 'OPERATOR').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(4, 'X').slice(0, 4);
-  return `RK-${seed}-84CC`;
-}
 
 interface AppleAuthWindow extends Window {
   AppleID?: {
@@ -129,6 +127,7 @@ export function LoginScreen({
 
   const recoveryCode = useMemo(() => buildDemoRecoveryCode(username || profile.callsign), [username, profile.callsign]);
   const showCallsignCaveat = callsignOnly || (Boolean(username.trim()) && !username.includes('@'));
+  const isRegisterCallsignMode = authMode === 'register' && showCallsignCaveat;
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.location.hash.includes('id_token=')) return;
@@ -224,6 +223,17 @@ export function LoginScreen({
     }
   };
 
+  const handleToggleCallsignMode = () => {
+    setError(null);
+    if (showCallsignCaveat) {
+      setCallsignOnly(false);
+      if (!username.includes('@')) setUsername('');
+    } else {
+      setCallsignOnly(true);
+      setUsername(generateRandomCallsign(username));
+    }
+  };
+
   const handleSubmit = (event: FormEvent) => { event.preventDefault(); void finishLogin(); };
 
   return (
@@ -284,22 +294,43 @@ export function LoginScreen({
               <form className="proto-login-form" onSubmit={handleSubmit}>
                 <label className="proto-field-label">
                   <div className="proto-label-row">
-                    <span>{showCallsignCaveat ? 'CALLSIGN ONLY (NO EMAIL)' : 'EMAIL ADDRESS (GUARANTEED RECOVERY)'}</span>
-                    <button
-                      type="button" className="proto-inline-switch-btn"
-                      onClick={() => { setCallsignOnly(prev => !prev); setError(null); }}
-                    >
-                      {showCallsignCaveat ? 'Use Email Instead (Recommended)' : 'Prefer Callsign-only (no email)?'}
-                    </button>
+                    <span>
+                      {authMode === 'login'
+                        ? 'EMAIL ADDRESS OR CALLSIGN'
+                        : showCallsignCaveat
+                          ? 'CALLSIGN ONLY (NO EMAIL)'
+                          : 'EMAIL ADDRESS (GUARANTEED RECOVERY)'}
+                    </span>
+                    {authMode === 'register' && (
+                      <button type="button" className="proto-inline-switch-btn" onClick={handleToggleCallsignMode}>
+                        {showCallsignCaveat ? 'Use Email Instead (Recommended)' : 'Prefer Callsign-only (no email)?'}
+                      </button>
+                    )}
                   </div>
-                  <input
-                    type="text" aria-label="Login callsign" value={username} maxLength={120}
-                    onChange={e => setUsername(e.target.value)}
-                    placeholder={showCallsignCaveat ? 'ASH-KING' : 'you@email.com'}
-                  />
+                  <div className="proto-callsign-input-row">
+                    <input
+                      type="text" aria-label="Login callsign" value={username} maxLength={120}
+                      onChange={e => setUsername(e.target.value)}
+                      placeholder={
+                        authMode === 'login'
+                          ? 'you@email.com or ASH-KING'
+                          : showCallsignCaveat
+                            ? 'ASH-LYNX-42'
+                            : 'you@email.com'
+                      }
+                    />
+                    {isRegisterCallsignMode && (
+                      <button
+                        type="button" className="proto-randomize-btn"
+                        onClick={() => { setUsername(generateRandomCallsign(username)); setError(null); }}
+                      >
+                        ↻ Randomize
+                      </button>
+                    )}
+                  </div>
                 </label>
 
-                {showCallsignCaveat && (
+                {isRegisterCallsignMode && (
                   <div className="proto-callsign-caveat" role="note">
                     <strong>NO EMAIL · RECOVERY NOT GUARANTEED</strong>
                     <p>
@@ -312,9 +343,11 @@ export function LoginScreen({
                 <label className="proto-field-label">
                   <div className="proto-label-row">
                     <span>{authMode === 'register' ? 'CREATE PASSWORD (4+ CHARS)' : 'PASSWORD'}</span>
-                    <button type="button" className="proto-inline-switch-btn" onClick={() => setForgotOpen(true)}>
-                      Forgot password?
-                    </button>
+                    {authMode === 'login' && (
+                      <button type="button" className="proto-inline-switch-btn" onClick={() => setForgotOpen(true)}>
+                        Forgot password?
+                      </button>
+                    )}
                   </div>
                   <input
                     type="password" aria-label="Login password" value={password}

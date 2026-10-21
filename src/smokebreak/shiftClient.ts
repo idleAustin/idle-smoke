@@ -13,6 +13,7 @@ import {
   type ShiftFinishResult, type StartedShiftSession,
 } from './shiftStorage';
 import { type EnvironmentId } from './smokeBreak';
+import { normalizeSmokeSession } from './smokeSessionClient';
 
 async function fetchLeaderboard(fetchImpl: FetchLike): Promise<LeaderboardResponse> {
   try {
@@ -158,7 +159,7 @@ export async function flushPendingShifts(
           continue;
         }
 
-        if (res.status === 400) {
+        if (res.status === 400 || res.status === 403) {
           // Drop permanently invalid shift payload so it cannot block subsequent shifts
           queue.shift();
           writePendingShiftsToStorage(queue);
@@ -213,7 +214,7 @@ export async function bootstrapPlayerSession(
 }
 
 export async function startShiftSession(
-  params: { environmentId: EnvironmentId },
+  params: { environmentId: EnvironmentId; sessionId?: string },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<StartedShiftSession | null> {
   await hydrateNativeStorage();
@@ -225,16 +226,19 @@ export async function startShiftSession(
   const { token, profile, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
   if (!token || !reachable) return null;
 
-  const effectiveEnvironmentId = resolveShiftEnvironment(
-    params.environmentId,
-    profile.unlockedEnvironments
-  );
+  const effectiveEnvironmentId = params.sessionId
+    ? params.environmentId
+    : resolveShiftEnvironment(params.environmentId, profile.unlockedEnvironments);
 
   try {
     const res = await fetchImpl(resolveApiPath('/api/v1/shifts/start'), {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ environmentId: effectiveEnvironmentId, platform: profile.platform }),
+      body: JSON.stringify({
+        environmentId: effectiveEnvironmentId,
+        platform: profile.platform,
+        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+      }),
     });
 
     if (res.ok) {
@@ -258,6 +262,7 @@ export async function submitFinishedShift(
     environmentId: EnvironmentId;
     pressOffsetsMs: readonly number[];
     startedAt?: number;
+    sessionId?: string;
   },
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
 ): Promise<ShiftFinishResult> {
@@ -301,7 +306,9 @@ export async function submitFinishedShift(
 
   const { token, profile: currentProfile, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
   const unlockedBefore = currentProfile.unlockedEnvironments;
-  const effectiveEnvironmentId = resolveShiftEnvironment(params.environmentId, unlockedBefore);
+  const effectiveEnvironmentId = params.sessionId
+    ? params.environmentId
+    : resolveShiftEnvironment(params.environmentId, unlockedBefore);
 
   if (token && reachable) {
     try {
@@ -311,6 +318,7 @@ export async function submitFinishedShift(
         platform: currentProfile.platform,
         ...(params.shiftId ? { shiftId: params.shiftId } : {}),
         ...(params.startedAt !== undefined ? { startedAt } : {}),
+        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
       };
 
       const res = await fetchImpl(resolveApiPath('/api/v1/shifts/finish'), {
@@ -330,6 +338,7 @@ export async function submitFinishedShift(
         const newlyUnlocked = Array.isArray(data.newlyUnlockedEnvironments)
           ? (data.newlyUnlockedEnvironments as EnvironmentId[])
           : updatedProfile.unlockedEnvironments.filter(id => !unlockedBefore.includes(id));
+        const smokeSession = normalizeSmokeSession(data.smokeSession);
 
         return {
           shiftId: String(data.shiftId ?? shiftId),
@@ -342,10 +351,11 @@ export async function submitFinishedShift(
           newlyUnlockedEnvironments: newlyUnlocked,
           profile: updatedProfile,
           leaderboard,
+          ...(smokeSession ? { smokeSession } : {}),
         };
       }
 
-      if (res.status === 400) {
+      if (res.status === 400 || res.status === 403) {
         return createRejectedShiftResult(shiftId, params.pressOffsetsMs.length, currentProfile);
       }
     } catch {

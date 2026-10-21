@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { ENVIRONMENTS, getEnvironment } from './EnvironmentDeck';
+import { generateRandomCallsign } from './LobbyLoginRecoveryPanel';
 import { BREAK_MS, PRESSES_PER_CIGARETTE, buttSlot, freshBreak, press, remainingMs } from './smokeBreak';
 
 it('lasts 15 seconds', () => expect(BREAK_MS).toBe(15_000));
@@ -30,14 +31,46 @@ it('stacks butts in rings, each layer on the last and inside the bowl', () => {
   expect(buttSlot(6).angle).not.toBeCloseTo(buttSlot(0).angle);
 });
 
-it('defines the four static break environments and resolves them by id with unlock milestones', () => {
-  expect(ENVIRONMENTS.map(e => ({ id: e.id, unlock: e.unlockSmokedRequired }))).toEqual([
-    { id: 'alleyway', unlock: 0 },
-    { id: 'restaurant', unlock: 5 },
-    { id: 'parking-garage', unlock: 15 },
-    { id: 'dumpster', unlock: 30 },
+it('defines the twelve static break environments across three phases and resolves them by id with unlock milestones and sector quotas', () => {
+  expect(
+    ENVIRONMENTS.map(e => ({
+      id: e.id,
+      phase: e.phase,
+      quota: e.sectorQuotaRequired,
+      unlock: e.unlockSmokedRequired,
+    }))
+  ).toEqual([
+    { id: 'alleyway', phase: 1, quota: 5, unlock: 0 },
+    { id: 'restaurant', phase: 1, quota: 10, unlock: 5 },
+    { id: 'parking-garage', phase: 1, quota: 15, unlock: 15 },
+    { id: 'dumpster', phase: 1, quota: 20, unlock: 30 },
+    { id: 'office-sidewalk', phase: 2, quota: 25, unlock: 50 },
+    { id: 'breakroom-patio', phase: 2, quota: 30, unlock: 75 },
+    { id: 'strip-mall-median', phase: 2, quota: 35, unlock: 105 },
+    { id: 'designated-gazebo', phase: 2, quota: 40, unlock: 140 },
+    { id: 'executive-balcony', phase: 3, quota: 50, unlock: 180 },
+    { id: 'concert-side-stage', phase: 3, quota: 60, unlock: 230 },
+    { id: 'superyacht-aft-deck', phase: 3, quota: 75, unlock: 290 },
+    { id: 'penthouse-helipad', phase: 3, quota: 100, unlock: 365 },
   ]);
   expect(getEnvironment('parking-garage').name).toBe('Parking Garage');
+  expect(getEnvironment('penthouse-helipad').name).toBe('Penthouse Helipad');
+});
+
+it('generates 10-11 character callsigns matching /^[A-Z]{3}-[A-Z]{3,4}-[0-9]{2}$/ and never returns the excluded callsign', () => {
+  let previous = generateRandomCallsign();
+  expect(previous).toMatch(/^[A-Z]{3}-[A-Z]{3,4}-[0-9]{2}$/);
+  expect(previous.length).toBeGreaterThanOrEqual(10);
+  expect(previous.length).toBeLessThanOrEqual(11);
+
+  for (let i = 0; i < 50; i++) {
+    const next = generateRandomCallsign(previous);
+    expect(next).toMatch(/^[A-Z]{3}-[A-Z]{3,4}-[0-9]{2}$/);
+    expect(next.length).toBeGreaterThanOrEqual(10);
+    expect(next.length).toBeLessThanOrEqual(11);
+    expect(next).not.toBe(previous);
+    previous = next;
+  }
 });
 
 it('records relative millisecond pressOffsetsMs from the first drag and ignores post-break drags', async () => {
@@ -61,7 +94,7 @@ it('records relative millisecond pressOffsetsMs from the first drag and ignores 
   expect(afterBreak).toBe(session);
   expect(afterBreak.pressOffsetsMs).toHaveLength(12);
 
-  expect(UNLOCK_THRESHOLDS).toEqual({
+  expect(UNLOCK_THRESHOLDS).toMatchObject({
     alleyway: 0,
     restaurant: 5,
     'parking-garage': 15,
@@ -71,5 +104,96 @@ it('records relative millisecond pressOffsetsMs from the first drag and ignores 
   expect(getUnlockedEnvironments(15)).toEqual(['alleyway', 'restaurant', 'parking-garage']);
 });
 
+it('scales in-shift Drag Ratio (12 -> 8 -> 4) across client press() and server verifyShiftReplay()', async () => {
+  const { getDragRatio, freshShiftSession, recordShiftDrag } = await import('./smokeBreak');
+  const { verifyShiftReplay } = await import('../../server/shiftVerifier.js');
 
+  expect(getDragRatio(0)).toBe(12);
+  expect(getDragRatio(9)).toBe(12);
+  expect(getDragRatio(10)).toBe(8);
+  expect(getDragRatio(19)).toBe(8);
+  expect(getDragRatio(20)).toBe(4);
+  expect(getDragRatio(59)).toBe(4);
+
+  const milestones: ReadonlyArray<{ drags: number; expectedButts: number }> = [
+    { drags: 60, expectedButts: 5 },
+    { drags: 120, expectedButts: 10 },
+    { drags: 160, expectedButts: 15 },
+    { drags: 200, expectedButts: 20 },
+    { drags: 220, expectedButts: 25 },
+    { drags: 240, expectedButts: 30 },
+    { drags: 360, expectedButts: 60 },
+  ];
+
+  for (const { drags, expectedButts } of milestones) {
+    let session = freshShiftSession();
+    for (let i = 0; i < drags; i++) {
+      session = recordShiftDrag(session, i * 20);
+    }
+    expect(session.state.smoked).toBe(expectedButts);
+    expect(session.state.progress).toBe(0);
+
+    const verified = verifyShiftReplay(session.pressOffsetsMs);
+    expect(verified).toMatchObject({
+      ok: true,
+      smoked: expectedButts,
+      progress: 0,
+      tapCount: drags,
+    });
+  }
+});
+
+it('returns deterministic 7-tier corny hype copy and Drag Ratio badges across all butt brackets', async () => {
+  const { getCornyHypeCopy } = await import('./smokeBreak');
+
+  expect(getCornyHypeCopy(0)).toEqual({
+    copy: "Attaboy! Clock's ticking — show that filter who's boss!",
+    badge: '12 DRAGS / BUTT',
+    dragRatio: 12,
+  });
+  expect(getCornyHypeCopy(1)).toEqual({
+    copy: 'Look at those lungs go! Upper management could never!',
+    badge: '12 DRAGS / BUTT',
+    dragRatio: 12,
+  });
+  expect(getCornyHypeCopy(4).copy).toContain('Upper management could never');
+  expect(getCornyHypeCopy(5)).toEqual({
+    copy: "You're a natural-born chimney, sport! Synergize that nicotine!",
+    badge: '12 DRAGS / BUTT',
+    dragRatio: 12,
+  });
+  expect(getCornyHypeCopy(9).badge).toBe('12 DRAGS / BUTT');
+  expect(getCornyHypeCopy(10)).toEqual({
+    copy: "HOT DOG! Down to 8 drags a butt! Now we're cooking with gas, champ!",
+    badge: '8 DRAGS / BUTT · TURBO',
+    dragRatio: 8,
+  });
+  expect(getCornyHypeCopy(15)).toEqual({
+    copy: "Sweet mother of pearl, slow down turbo — you're gonna trip the sprinklers!",
+    badge: '8 DRAGS / BUTT · TURBO',
+    dragRatio: 8,
+  });
+  expect(getCornyHypeCopy(20)).toEqual({
+    copy: 'HOLY SMOKES! 4 drags a butt! Doctors hate you, the Tobacco Board wants your autograph!',
+    badge: '4 DRAGS / BUTT · OVERDRIVE',
+    dragRatio: 4,
+  });
+  expect(getCornyHypeCopy(30)).toEqual({
+    copy: 'UNBELIEVABLE! You are legally 94% tar and 100% pure American hustle!',
+    badge: '4 DRAGS / BUTT · OVERDRIVE',
+    dragRatio: 4,
+  });
+});
+
+it('validates desktop multi-key drumming codes (letters, digits, arrows, Space) while rejecting modifiers and navigation keys', async () => {
+  const { isShiftDrumKeyCode } = await import('./smokeBreak');
+
+  for (const validCode of ['Space', 'KeyA', 'KeyZ', 'Digit0', 'Digit1', 'Digit9', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+    expect(isShiftDrumKeyCode(validCode)).toBe(true);
+  }
+
+  for (const ignoredCode of ['Tab', 'Escape', 'Enter', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'AltLeft', 'MetaLeft', 'F1', 'Backspace']) {
+    expect(isShiftDrumKeyCode(ignoredCode)).toBe(false);
+  }
+});
 

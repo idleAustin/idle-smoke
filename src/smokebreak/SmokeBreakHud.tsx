@@ -1,12 +1,33 @@
-// Heads-up display panels for active smoke breaks: top command bar, brief instructions, butt tally, and post-shift report dialog.
+// Heads-up display panels for active smoke breaks: top command bar, brief instructions, 3-2-1 countdown, butt tally, and post-shift report dialog.
 
 import { type RefObject } from 'react';
 import { formatWhereTagline } from './accountClient';
 import { type EnvironmentId, getEnvironment, type SmokeEnvironment } from './EnvironmentDeck';
 import { type LeaderboardEntry, type PlayerProfile } from './shiftStorage';
-import { BREAK_MS, PRESSES_PER_CIGARETTE } from './smokeBreak';
-import { type GameModeId, type RivalOpponent } from './SmokeBreakLobby';
+import {
+  BREAK_MS,
+  CAMPAIGN_PHASES,
+  getCornyHypeCopy,
+  getDragRatio,
+  isPhasePromotionUnlocked,
+} from './smokeBreak';
+import { type GameModeId } from './SmokeBreakLobby';
+import { type SmokeSession } from './smokeSessionClient';
 import { UserCircleTrigger } from './UserProfileMenu';
+
+export function getActivePromotionBanner(
+  env: SmokeEnvironment,
+  profile: PlayerProfile
+): string | null {
+  if (profile.promotionRoundsCleared >= 9) return 'CHAIRMAN OF THE ASH · ALL PROMOTIONS CLEARED';
+  const activePhaseNum = Math.floor(profile.promotionRoundsCleared / 3) + 1;
+  const roundInPhase = (profile.promotionRoundsCleared % 3) + 1;
+  const phaseMeta = CAMPAIGN_PHASES.find(p => p.phase === activePhaseNum);
+  if (!phaseMeta || env.id !== phaseMeta.finalSectorId) return null;
+  if (!isPhasePromotionUnlocked(activePhaseNum, profile.smokedByEnvironment)) return null;
+  const target = phaseMeta.promotionTargets[roundInPhase - 1];
+  return `PROMOTION ROUND ${roundInPhase}/3 · TARGET ${target} BUTTS`;
+}
 
 export function SmokeCommandHeader({
   env,
@@ -49,6 +70,11 @@ export function SmokeCommandHeader({
         </strong>
       </div>
       <div className="hud-right-group">
+        {showChangeModeAction && (
+          <button type="button" className="hud-nav-back-btn" onClick={onChangeMode}>
+            ← Modes / Map
+          </button>
+        )}
         <div
           className={`shift-clock ${done ? 'complete' : 'running'}`}
           role="timer"
@@ -77,24 +103,73 @@ export function SmokeBriefPanel({
   done,
   started,
   touch,
+  smoked = 0,
+  promotionBanner = null,
 }: {
   envName: string;
   done: boolean;
   started: boolean;
   touch: boolean;
+  smoked?: number;
+  promotionBanner?: string | null;
 }) {
+  const hype = getCornyHypeCopy(smoked);
   return (
-    <section className="hud-panel smoke-brief">
-      <span className="eyebrow">ON BREAK · {BREAK_MS / 1000} SECONDS · {envName.toUpperCase()}</span>
+    <section className="hud-panel smoke-brief" aria-label="Smoke break brief">
+      <div className="smoke-brief-meta">
+        <span className="eyebrow">ON BREAK · {BREAK_MS / 1000} SECONDS · {envName.toUpperCase()}</span>
+        <span
+          className={`smoke-drag-ratio-badge ratio-${hype.dragRatio}`}
+          aria-label={`Active drag ratio: ${hype.badge}`}
+        >
+          {hype.badge}
+        </span>
+      </div>
+      {promotionBanner && (
+        <div className="smoke-promo-target-pill" aria-label="Active promotion target">
+          {promotionBanner}
+        </div>
+      )}
       <h2>{done ? 'Break over. Back to the floor.' : !started ? 'Light up.' : 'Keep dragging.'}</h2>
+      {started && !done && (
+        <p className="smoke-hype-copy" role="status" aria-live="polite">
+          {hype.copy}
+        </p>
+      )}
       <p>
         {!started
           ? touch
             ? <>Tap anywhere on the screen to take a drag. The clock starts on your first tap.</>
-            : <>Mash <kbd>Space</kbd> or click to take a drag. The clock starts on your first drag.</>
-          : <>{touch ? 'Keep tapping. ' : ''}Each cigarette takes {PRESSES_PER_CIGARETTE} drags. The next one lights as soon as you stub one out.</>}
+            : <>Mash <kbd>Space</kbd> or drum any keys (<kbd>A–Z</kbd> <kbd>0–9</kbd>) to take a drag. The clock starts on your first drag.</>
+          : <>{touch ? 'Keep tapping. ' : 'Drum keys to chain drags. '}Each cigarette takes {hype.dragRatio} drags. The next one lights as soon as you stub one out.</>}
       </p>
     </section>
+  );
+}
+
+export function SmokeCountdownOverlay({
+  count,
+  sessionCode,
+}: {
+  count: number;
+  sessionCode?: string;
+}) {
+  return (
+    <div
+      className="proto-overlay proto-countdown-overlay"
+      role="status"
+      aria-live="assertive"
+      aria-label={`Light up countdown: ${count}`}
+      onPointerDown={e => e.stopPropagation()}
+    >
+      <div className="proto-countdown-card hud-panel">
+        <span className="eyebrow">
+          SMOKE SESSION {sessionCode ? `· CODE ${sessionCode}` : ''} · GET READY
+        </span>
+        <strong className="proto-countdown-digit">{count}</strong>
+        <p className="proto-sub">Light-up countdown in progress…</p>
+      </div>
+    </div>
   );
 }
 
@@ -104,34 +179,47 @@ export function SmokeTallyPanel({
   remaining,
   lifetimeSmoked,
   bestSmoked,
-  gameMode,
-  selectedRival,
 }: {
   smoked: number;
   progress: number;
   remaining: number;
   lifetimeSmoked: number;
   bestSmoked: number;
-  gameMode: GameModeId;
-  selectedRival: RivalOpponent | null;
 }) {
+  const dragRatio = getDragRatio(smoked);
   return (
     <section className="hud-panel smoke-tally" aria-label="Smoke break tally">
       <span className="eyebrow">BUTTS IN THE TRAY</span>
       <strong>{smoked}</strong>
-      <span className="eyebrow">CURRENT CIGARETTE</span>
-      <meter aria-label="Current cigarette smoked" value={progress} max={PRESSES_PER_CIGARETTE} />
+      <span className="eyebrow">CURRENT CIGARETTE ({progress}/{dragRatio})</span>
+      <meter aria-label="Current cigarette smoked" value={progress} max={dragRatio} />
       <span className="eyebrow">BREAK LEFT</span>
       <meter aria-label="Break time left" value={remaining} max={BREAK_MS} />
       <div className="smoke-tally-career" aria-label="Career smoke break stats">
         <span>LIFETIME: {lifetimeSmoked}</span>
         <span>BEST: {bestSmoked}</span>
-        {gameMode === 'h2h' && selectedRival && (
-          <span>VS {selectedRival.callsign}: {selectedRival.smoked}</span>
-        )}
       </div>
     </section>
   );
+}
+
+function resolveSessionOutcomeBanner(session: SmokeSession): string {
+  const finished = session.participants.filter(p => p.finished);
+  if (finished.length === 0) {
+    return `SMOKE SESSION #${session.code} · Tallying crew butts…`;
+  }
+  const allDone = finished.length === session.participants.length;
+  const leader = finished[0];
+  const tiedWinners = finished.filter(
+    p => p.smoked === leader.smoked && p.tapCount === leader.tapCount
+  );
+  if (!allDone) {
+    return `CURRENT LEADER: ${leader.callsign} (${leader.smoked ?? 0} butts) · Waiting on ${session.participants.length - finished.length} more…`;
+  }
+  if (tiedWinners.length > 1) {
+    return `SMOKE SESSION DRAW · ${tiedWinners.map(p => p.callsign).join(' & ')} tied at ${leader.smoked ?? 0} butts`;
+  }
+  return `SMOKE SESSION WINNER · ${leader.callsign} (${leader.smoked ?? 0} ${leader.smoked === 1 ? 'butt' : 'butts'})`;
 }
 
 export function BreakReportDialog({
@@ -143,7 +231,7 @@ export function BreakReportDialog({
   profile,
   leaderboardEntries,
   gameMode = 'sandbox',
-  rival = null,
+  smokeSession = null,
   armed,
   newShiftRef,
   onFinish,
@@ -157,21 +245,15 @@ export function BreakReportDialog({
   profile: PlayerProfile;
   leaderboardEntries: readonly LeaderboardEntry[];
   gameMode?: GameModeId;
-  rival?: RivalOpponent | null;
+  smokeSession?: SmokeSession | null;
   armed: boolean;
   newShiftRef: RefObject<HTMLButtonElement>;
   onFinish(): void;
   onOpenModes?(): void;
 }) {
   const plural = (n: number) => `${n} ${n === 1 ? 'cigarette' : 'cigarettes'}`;
-  const h2hOutcome =
-    gameMode === 'h2h' && rival
-      ? smoked > rival.smoked
-        ? `1v1 VICTORY · Beat ${rival.callsign} (${smoked} to ${rival.smoked} butts)`
-        : smoked === rival.smoked
-          ? `1v1 DRAW · Tied ${rival.callsign} (${smoked} butts each)`
-          : `1v1 DEFEAT · ${rival.callsign} smoked ${rival.smoked} butts (you had ${smoked})`
-      : null;
+  const sessionBanner =
+    gameMode === 'h2h' && smokeSession ? resolveSessionOutcomeBanner(smokeSession) : null;
 
   return (
     <section
@@ -181,13 +263,13 @@ export function BreakReportDialog({
       onPointerDown={e => e.stopPropagation()}
     >
       <span className="eyebrow">
-        BREAK REPORT · {gameMode.toUpperCase()} · {verifiedEnvironment.name.toUpperCase()}
+        BREAK REPORT · {gameMode === 'h2h' ? 'SMOKE SESSION' : gameMode.toUpperCase()} · {verifiedEnvironment.name.toUpperCase()}
       </span>
       <h2 id="smoke-result-title">{plural(smoked)} in {BREAK_MS / 1000} seconds</h2>
       <p>Supervisor's waving you back in.</p>
-      {h2hOutcome && (
+      {sessionBanner && (
         <div className="unlock-banner" role="status">
-          {h2hOutcome}
+          {sessionBanner}
         </div>
       )}
       <dl className="break-report-stats" aria-label="Shift and career stats">
@@ -208,6 +290,30 @@ export function BreakReportDialog({
         <div className="unlock-banner" role="status">
           NEW BREAK SPOT UNLOCKED: {newlyUnlockedEnvironments.map(id => getEnvironment(id).name).join(', ')}
         </div>
+      )}
+      {gameMode === 'h2h' && smokeSession && (
+        <section className="leaderboard-panel" aria-label="Smoke Session Scoreboard">
+          <div className="leaderboard-header">
+            <span className="eyebrow">SMOKE SESSION #{smokeSession.code} SCOREBOARD</span>
+            <span className="leaderboard-meta">
+              {smokeSession.participants.filter(p => p.finished).length}/{smokeSession.participants.length} FINISHED
+            </span>
+          </div>
+          <ol className="leaderboard-list">
+            {smokeSession.participants.map(p => (
+              <li key={p.playerId} className="leaderboard-row">
+                <span className="leaderboard-rank">#{p.rank}</span>
+                <span className="leaderboard-callsign">{p.callsign}</span>
+                <span className="leaderboard-env">
+                  {p.finished ? `${p.tapCount ?? 0} drags` : 'SMOKING…'}
+                </span>
+                <span className="leaderboard-score">
+                  {p.finished ? `${p.smoked ?? 0} butts` : '—'}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
       )}
       <section className="leaderboard-panel" aria-label="Global Top 10 Leaderboard">
         <div className="leaderboard-header">

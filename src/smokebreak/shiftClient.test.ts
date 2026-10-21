@@ -378,6 +378,150 @@ describe('shiftClient frontend progression & leaderboard client', () => {
       db.close();
     }
   });
+
+  it('normalizes smokedByEnvironment, promotionRoundsCleared, unlockedPhase, and isChairman when clearing Phase 3 Round 3 via submitFinishedShift', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    try {
+      const store = createSqliteStore(db);
+      const fetchMock = createStoreFetch(store);
+      const boot = await bootstrapPlayerSession(fetchMock);
+
+      // Seed player with all 12 sector quotas met and promotion_rounds_cleared = 8
+      db.prepare('UPDATE player_dim SET promotion_rounds_cleared = 8 WHERE id = ?').run(
+        boot.profile.playerId
+      );
+      const quotas: Array<[string, number]> = [
+        ['alleyway', 5],
+        ['restaurant', 10],
+        ['parking-garage', 15],
+        ['dumpster', 20],
+        ['office-sidewalk', 25],
+        ['breakroom-patio', 30],
+        ['strip-mall-median', 35],
+        ['designated-gazebo', 40],
+        ['executive-balcony', 50],
+        ['concert-side-stage', 60],
+        ['superyacht-aft-deck', 75],
+        ['penthouse-helipad', 100],
+      ];
+      for (const [envId, count] of quotas) {
+        db.prepare(
+          `INSERT INTO shift_fact (id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at)
+           VALUES (?, ?, ?, 20261015, 'web', ?, 120, 14000, 'verified', 1700000000, 1700000015)`
+        ).run(`seed-${envId}`, boot.profile.playerId, envId, count);
+      }
+
+      // Refresh profile -> unlockedPhase = 3, isChairman = false, all 12 sectors unlocked
+      const refreshed = await bootstrapPlayerSession(fetchMock);
+      expect(refreshed.profile.promotionRoundsCleared).toBe(8);
+      expect(refreshed.profile.unlockedPhase).toBe(3);
+      expect(refreshed.profile.isChairman).toBe(false);
+      expect(refreshed.profile.unlockedEnvironments).toHaveLength(12);
+
+      // Submit 30 butts (240 presses: 120 + 80 + 40) in penthouse-helipad -> clears Round 9 -> Chairman!
+      const thirtyButtsOffsets = Array.from({ length: 240 }, (_, idx) => idx * 30);
+      const finish = await submitFinishedShift(
+        { environmentId: 'penthouse-helipad', pressOffsetsMs: thirtyButtsOffsets },
+        fetchMock
+      );
+      expect(finish.verified).toBe(true);
+      expect(finish.smoked).toBe(30);
+      expect(finish.profile.promotionRoundsCleared).toBe(9);
+      expect(finish.profile.unlockedPhase).toBe(3);
+      expect(finish.profile.isChairman).toBe(true);
+      expect(finish.profile.smokedByEnvironment['penthouse-helipad']).toBe(130);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('flushes a multi-shift offline batch where an earlier shift clears the 4th sector quota and subsequent queued shifts clear Rounds 1-3 of the Promotion gauntlet into Phase 2', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    try {
+      const store = createSqliteStore(db);
+      const onlineFetch = createStoreFetch(store);
+      const offlineFetch = async (): Promise<Response> => {
+        throw new Error('Network unreachable');
+      };
+
+      const boot = await bootstrapPlayerSession(onlineFetch);
+      // Seed Sectors 01-03 quotas met so dumpster (SEC-04) is unlocked with 0/20 butts
+      for (const [envId, count] of [
+        ['alleyway', 5],
+        ['restaurant', 10],
+        ['parking-garage', 15],
+      ] as const) {
+        db.prepare(
+          `INSERT INTO shift_fact (id, player_id, environment_id, date_key, platform, smoked, tap_count, duration_ms, status, started_at, completed_at)
+           VALUES (?, ?, ?, 20261015, 'web', ?, 120, 14000, 'verified', 1700000000, 1700000015)`
+        ).run(`pre-${envId}`, boot.profile.playerId, envId, count);
+      }
+      await bootstrapPlayerSession(onlineFetch);
+
+      const makeDrags = (n: number) => Array.from({ length: n }, (_, i) => i * 25);
+
+      // Offline Shift 1: 20 butts (200 drags) in dumpster -> meets dumpster 20-butt quota (promotionRoundsCleared stays 0)
+      const qQuota = await submitFinishedShift(
+        { shiftId: 'off-promo-0', environmentId: 'dumpster', pressOffsetsMs: makeDrags(200), startedAt: 1760549900 },
+        offlineFetch
+      );
+      expect(qQuota.queued).toBe(true);
+      expect(qQuota.profile.smokedByEnvironment.dumpster).toBe(20);
+      expect(qQuota.profile.promotionRoundsCleared).toBe(0);
+
+      // Offline Shift 2: Round 1 (10 butts = 120 drags) -> promotionRoundsCleared = 1
+      const qR1 = await submitFinishedShift(
+        { shiftId: 'off-promo-1', environmentId: 'dumpster', pressOffsetsMs: makeDrags(120), startedAt: 1760549920 },
+        offlineFetch
+      );
+      expect(qR1.profile.promotionRoundsCleared).toBe(1);
+
+      // Offline Shift 3: Round 2 (15 butts = 160 drags) -> promotionRoundsCleared = 2
+      const qR2 = await submitFinishedShift(
+        { shiftId: 'off-promo-2', environmentId: 'dumpster', pressOffsetsMs: makeDrags(160), startedAt: 1760549940 },
+        offlineFetch
+      );
+      expect(qR2.profile.promotionRoundsCleared).toBe(2);
+
+      // Offline Shift 4: Round 3 (20 butts = 200 drags) -> promotionRoundsCleared = 3, unlocks office-sidewalk (Phase 2)
+      const qR3 = await submitFinishedShift(
+        { shiftId: 'off-promo-3', environmentId: 'dumpster', pressOffsetsMs: makeDrags(200), startedAt: 1760549960 },
+        offlineFetch
+      );
+      expect(qR3.profile.promotionRoundsCleared).toBe(3);
+      expect(qR3.profile.unlockedPhase).toBe(2);
+      expect(qR3.newlyUnlockedEnvironments).toEqual(['office-sidewalk']);
+
+      // Offline Shift 5: 25 butts (220 drags) in newly unlocked office-sidewalk -> unlocks breakroom-patio
+      const qPhase2 = await submitFinishedShift(
+        { shiftId: 'off-phase2-1', environmentId: 'office-sidewalk', pressOffsetsMs: makeDrags(220), startedAt: 1760549980 },
+        offlineFetch
+      );
+      expect(qPhase2.profile.unlockedEnvironments).toContain('breakroom-patio');
+      expect(getPendingShifts()).toHaveLength(5);
+
+      // Reconnect and flush all 5 queued shifts in FIFO order -> server verifies all 5 without 403 environment_locked
+      const flushed = await flushPendingShifts(onlineFetch);
+      expect(flushed.flushedCount).toBe(5);
+      expect(flushed.remainingCount).toBe(0);
+      expect(flushed.profile.promotionRoundsCleared).toBe(3);
+      expect(flushed.profile.unlockedPhase).toBe(2);
+      expect(flushed.profile.smokedByEnvironment.dumpster).toBe(65);
+      expect(flushed.profile.smokedByEnvironment['office-sidewalk']).toBe(25);
+      expect(flushed.profile.unlockedEnvironments).toEqual([
+        'alleyway',
+        'restaurant',
+        'parking-garage',
+        'dumpster',
+        'office-sidewalk',
+        'breakroom-patio',
+      ]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 
