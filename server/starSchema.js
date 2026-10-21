@@ -178,9 +178,11 @@ export const ENVIRONMENT_SEEDS = Object.freeze([
 /**
  * Returns the highest unlocked Campaign Phase (1, 2, or 3) based on `promotionRoundsCleared` (0..9).
  * @param {number | undefined | null} promotionRoundsCleared
+ * @param {boolean} [isAdmin]
  * @returns {1 | 2 | 3}
  */
-export function getUnlockedPhase(promotionRoundsCleared) {
+export function getUnlockedPhase(promotionRoundsCleared, isAdmin = false) {
+  if (isAdmin === true) return 3;
   const safeRounds =
     typeof promotionRoundsCleared === 'number' && Number.isFinite(promotionRoundsCleared)
       ? Math.max(0, Math.min(9, Math.floor(promotionRoundsCleared)))
@@ -194,9 +196,11 @@ export function getUnlockedPhase(promotionRoundsCleared) {
  * Returns whether all 4 sectors in a Phase have met their individual sector quotas.
  * @param {1 | 2 | 3 | number} phase
  * @param {Record<string, number> | undefined | null} smokedByEnvironment
+ * @param {boolean} [isAdmin]
  * @returns {boolean}
  */
-export function isPhasePromotionUnlocked(phase, smokedByEnvironment) {
+export function isPhasePromotionUnlocked(phase, smokedByEnvironment, isAdmin = false) {
+  if (isAdmin === true) return true;
   const phaseSectors = ENVIRONMENT_SEEDS.filter(env => env.phase === phase);
   if (phaseSectors.length === 0) return false;
   return phaseSectors.every(env => {
@@ -276,13 +280,13 @@ export function evaluatePromotionAttempt({
 
 /**
  * Dual-signature environment unlock evaluator:
- * 1) `getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared })`
+ * 1) `getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared, isAdmin })`
  *    Evaluates sequential per-sector quotas across unlocked Phases.
  *    Within each unlocked Phase, sector 1 is always unlocked, and sector N (N=2..4)
  *    is unlocked iff every preceding sector in that Phase has `smokedByEnvironment[prev.id] >= prev.sector_quota_required`.
  * 2) `getUnlockedEnvironments(lifetimeSmoked)` (legacy numeric fallback)
  *    Evaluates Phase 1 environments against `unlock_smoked_required` (0, 5, 15, 30).
- * @param {number | { smokedByEnvironment?: Record<string, number>, promotionRoundsCleared?: number } | undefined | null} input
+ * @param {number | { smokedByEnvironment?: Record<string, number>, promotionRoundsCleared?: number, isAdmin?: boolean } | undefined | null} input
  * @returns {string[]}
  */
 export function getUnlockedEnvironments(input) {
@@ -292,6 +296,10 @@ export function getUnlockedEnvironments(input) {
     return ENVIRONMENT_SEEDS
       .filter(env => env.phase === 1 && safeTotal >= env.unlock_smoked_required)
       .map(env => env.id);
+  }
+
+  if (input && typeof input === 'object' && input.isAdmin === true) {
+    return ENVIRONMENT_SEEDS.map(env => env.id);
   }
 
   const smokedByEnvironment =

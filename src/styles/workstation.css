@@ -224,13 +224,13 @@ kbd {
 .smoke-break .hud-command { grid-row: 1; }
 .smoke-viewport { position: relative; min-height: 0; border-radius: var(--as-radius-md); overflow: hidden; }
 .smoke-stage { position: absolute; inset: 0; }
-.smoke-brief { position: absolute; top: 12px; left: 12px; width: min(300px, calc(100% - 24px)); }
+.smoke-brief { position: absolute; top: 12px; left: 12px; width: min(300px, calc(100% - 24px)); pointer-events: none; }
 .smoke-brief h2 { font-size: 17px; margin: 10px 0; }
 .smoke-brief p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--as-text-secondary); }
-.smoke-tally { position: absolute; right: 12px; bottom: 12px; width: 200px; display: grid; gap: 8px; }
+.smoke-tally { position: absolute; right: 12px; bottom: 12px; width: 200px; display: grid; gap: 8px; pointer-events: none; }
 .smoke-tally strong { font-size: 48px; line-height: 1; color: var(--as-accent-primary); font-family: var(--as-font-heading); }
 .smoke-tally meter { margin-bottom: 4px; }
-.smoke-result { position: absolute; inset: 0; margin: auto; height: fit-content; width: min(380px, calc(100% - 24px)); padding: 24px; text-align: center; background: var(--as-bg-surface); border: 1px solid var(--as-border-strong); border-radius: var(--as-radius-lg); }
+.smoke-result { position: absolute; inset: 0; margin: auto; height: fit-content; width: min(380px, calc(100% - 24px)); padding: 24px; text-align: center; background: var(--as-bg-surface); border: 1px solid var(--as-border-strong); border-radius: var(--as-radius-lg); touch-action: pan-y; -webkit-overflow-scrolling: touch; }
 .smoke-result h2 { font-size: 24px; margin: 8px 0; }
 .smoke-result p { color: var(--as-text-secondary); font-size: 13px; margin: 0 0 18px; }
 
@@ -303,10 +303,11 @@ kbd {
 }
 @media (max-width: 640px) {
   .smoke-break { grid-template-rows: auto minmax(0, 1fr); }
-  .smoke-brief { padding: 12px; }
-  .smoke-brief h2 { font-size: 15px; margin: 6px 0; }
-  .smoke-tally { width: auto; left: 12px; grid-template-columns: auto 1fr; align-items: center; gap: 6px 12px; padding: 12px; }
-  .smoke-tally strong { font-size: 28px; justify-self: end; }
+  .smoke-brief { top: 8px; left: 8px; right: 8px; width: auto; padding: 10px 12px; }
+  .smoke-brief h2 { font-size: 15px; margin: 4px 0; }
+  .smoke-brief p { font-size: 11.5px; line-height: 1.4; }
+  .smoke-tally { left: 8px; right: 8px; bottom: 8px; width: auto; padding: 8px 12px; gap: 4px 10px; grid-template-columns: auto 1fr; align-items: center; }
+  .smoke-tally strong { font-size: 24px; justify-self: end; }
   .smoke-tally meter { margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

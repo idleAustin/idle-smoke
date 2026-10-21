@@ -151,6 +151,7 @@
 .proto-mobbin-stats-strip strong { font: 700 11px var(--as-font-mono); color: var(--as-accent-primary); }
 
 /* Option C: Quick Profile Card Popover */
+.hud-panel.proto-discord-card,
 .proto-discord-card {
   position: absolute;
   top: calc(100% + 10px);
@@ -159,16 +160,19 @@
   padding: 0;
   overflow: hidden;
   background: var(--as-bg-surface);
+  backdrop-filter: none;
   border: 1px solid var(--as-border-strong);
   border-radius: var(--as-radius-md);
-  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.88);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.96), 0 0 0 1px var(--as-bg-base);
   z-index: 90;
   text-align: left;
 }
 .proto-discord-banner {
   height: 54px;
   padding: 10px 12px;
-  background: linear-gradient(125deg, var(--as-accent-glow), var(--as-status-warning-bg));
+  background:
+    linear-gradient(125deg, var(--as-accent-glow), var(--as-status-warning-bg)),
+    var(--as-bg-elevated);
   border-bottom: 1px solid var(--as-border-subtle);
   display: flex;
   justify-content: flex-end;
@@ -363,5 +367,35 @@ body.compact .hud-command .mobile-menu { min-height: 48px; min-width: 48px; font
   body.compact .mobile-deck { grid-column: 2; grid-row: 2; gap: 3px 8px; padding: 6px; overflow-y: auto; }
   body.compact .mobile-deck .case-inspector { height: 38px; }
   body.compact .mobile-deck .placement-status { display: none; }
+}
+@media (max-width: 640px) {
+  .hud-command {
+    flex-wrap: nowrap;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .hud-brand .eyebrow,
+  .hud-tagline-copy {
+    display: none;
+  }
+  .hud-right-group {
+    gap: 6px;
+  }
+  .hud-panel button.hud-nav-back-btn,
+  .hud-nav-back-btn {
+    min-height: 44px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+  .hud-panel button.proto-user-circle-btn,
+  .proto-user-circle-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .hud-command .shift-clock {
+    font-size: 20px;
+  }
 }
 @media (prefers-reduced-motion:reduce) { .warehouse-drawer { animation: none; } }

@@ -232,7 +232,7 @@ export class SmokeBreakScene {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     // Pull back on narrow screens so the cigarette and the tray both stay in frame.
-    const distance = Math.min(2, Math.max(1, 1 / this.camera.aspect));
+    const distance = Math.min(2.25, Math.max(1, 1.05 / this.camera.aspect));
     const look = new Vector3(0.4, 7.3, 0.5);
     this.camera.position.copy(look).add(new Vector3(4.5, 4.8, 19.5).multiplyScalar(distance));
     this.camera.lookAt(look);

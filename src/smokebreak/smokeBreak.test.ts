@@ -55,6 +55,10 @@ it('defines the twelve static break environments across three phases and resolve
   ]);
   expect(getEnvironment('parking-garage').name).toBe('Parking Garage');
   expect(getEnvironment('penthouse-helipad').name).toBe('Penthouse Helipad');
+  for (const env of ENVIRONMENTS) {
+    expect(env.isPlaceholderArt).toBe(false);
+    expect(env.image).toMatch(new RegExp(`environments/${env.id}\\.jpg$`));
+  }
 });
 
 it('generates 10-11 character callsigns matching /^[A-Z]{3}-[A-Z]{3,4}-[0-9]{2}$/ and never returns the excluded callsign', () => {
@@ -196,4 +200,45 @@ it('validates desktop multi-key drumming codes (letters, digits, arrows, Space) 
     expect(isShiftDrumKeyCode(ignoredCode)).toBe(false);
   }
 });
+
+it('unlocks all 12 environments, Phase 3, and Chairman rank in normalizeProfile and projectShiftProgression when isAdmin is true', async () => {
+  const { normalizeProfile } = await import('./shiftStorage');
+  const { projectShiftProgression } = await import('./smokeBreak');
+
+  const expectedEnvironments = ENVIRONMENTS.map(env => env.id);
+  const adminProfile = normalizeProfile({
+    playerId: 'admin-1',
+    callsign: 'ADMIN-01',
+    isAdmin: true,
+  });
+
+  expect(adminProfile).toMatchObject({
+    playerId: 'admin-1',
+    callsign: 'ADMIN-01',
+    isAdmin: true,
+    lifetimeSmoked: 0,
+    unlockedPhase: 3,
+    promotionRoundsCleared: 9,
+    isChairman: true,
+    unlockedEnvironments: expectedEnvironments,
+  });
+
+  const projected = projectShiftProgression(0, 0, ['alleyway'], 1, {
+    environmentId: 'penthouse-helipad',
+    smokedByEnvironment: adminProfile.smokedByEnvironment,
+    promotionRoundsCleared: 0,
+    isAdmin: true,
+  });
+
+  expect(projected).toMatchObject({
+    lifetimeSmoked: 1,
+    bestSmoked: 1,
+    unlockedPhase: 3,
+    promotionRoundsCleared: 9,
+    isChairman: true,
+    unlockedEnvironments: expectedEnvironments,
+  });
+  expect(projected.smokedByEnvironment?.['penthouse-helipad']).toBe(1);
+});
+
 

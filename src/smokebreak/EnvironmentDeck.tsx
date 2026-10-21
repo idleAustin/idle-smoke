@@ -1,4 +1,4 @@
-// 12-sector break environment catalog, SVG blueprint placeholders, 3D lighting palettes, and Phase-scoped bottom deck.
+// 12-sector break environment catalog, 3D lighting palettes, and Phase-scoped bottom deck.
 
 import { useEffect, useState } from 'react';
 import {
@@ -50,41 +50,6 @@ export function resolveEnvironmentImagePath(
   const normalizedBase =
     trimmedBase === '' ? '/' : trimmedBase.endsWith('/') ? trimmedBase : `${trimmedBase}/`;
   return `${normalizedBase}${cleanAsset}`;
-}
-
-/** Builds a clean architectural blueprint SVG data URI for Phase 2 & 3 sectors before photo assets arrive. */
-function buildBlueprintPlaceholderSvg(
-  code: string,
-  title: string,
-  subtitle: string,
-  primaryHex: string,
-  secondaryHex: string
-): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="800" height="450">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#0a0a0c"/>
-        <stop offset="55%" stop-color="#121216"/>
-        <stop offset="100%" stop-color="${secondaryHex}" stop-opacity="0.35"/>
-      </linearGradient>
-      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="${primaryHex}" stroke-width="0.7" stroke-opacity="0.18"/>
-      </pattern>
-    </defs>
-    <rect width="800" height="450" fill="url(#bg)"/>
-    <rect width="800" height="450" fill="url(#grid)"/>
-    <g stroke="${primaryHex}" stroke-opacity="0.32" fill="none" stroke-width="1.5">
-      <rect x="48" y="42" width="704" height="366" rx="6"/>
-      <line x1="48" y1="110" x2="752" y2="110" stroke-dasharray="6 6"/>
-      <path d="M 520 360 L 620 210 L 710 210 L 710 360 Z"/>
-      <path d="M 420 360 L 420 160 L 540 160 L 540 360"/>
-      <circle cx="620" cy="145" r="28" stroke-dasharray="4 4"/>
-    </g>
-    <text x="72" y="86" fill="${primaryHex}" font-family="monospace" font-weight="700" font-size="16" letter-spacing="3">${code} // ARCHITECTURAL BLUEPRINT PLACEHOLDER</text>
-    <text x="72" y="295" fill="#f4f4f5" font-family="sans-serif" font-weight="800" font-size="34">${title}</text>
-    <text x="72" y="330" fill="#a1a1aa" font-family="monospace" font-weight="500" font-size="15" letter-spacing="1">${subtitle}</text>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
@@ -202,14 +167,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '61°F · Commuter Exhaust',
     risk: 'BADGE SWIPE WATCH',
     riskTone: 'success',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-05',
-      'Office Sidewalk',
-      'CURBSIDE ASH URN · 25FT FROM GLASS DOORS',
-      '#38bdf8',
-      '#1e293b'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/office-sidewalk.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['office-sidewalk'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['office-sidewalk'],
     coords: { x: '17%', y: '70%' },
@@ -233,14 +192,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '64°F · Overcast Glare',
     risk: 'SLACK STATUS AWAY',
     riskTone: 'warning',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-06',
-      'Breakroom Patio',
-      'CONCRETE PICNIC TABLE · VENDING HUM',
-      '#84cc16',
-      '#1e293b'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/breakroom-patio.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['breakroom-patio'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['breakroom-patio'],
     coords: { x: '37%', y: '34%' },
@@ -264,14 +217,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '66°F · Humid Haze',
     risk: 'PROPERTY MANAGER',
     riskTone: 'warning',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-07',
-      'Strip-Mall Median',
-      'RETENTION POND GRAVEL · LOT B DIVIDER',
-      '#f59e0b',
-      '#292524'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/strip-mall-median.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['strip-mall-median'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['strip-mall-median'],
     coords: { x: '56%', y: '68%' },
@@ -295,14 +242,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '59°F · Crosswind Rattle',
     risk: 'HR COMPLIANCE CAM',
     riskTone: 'error',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-08',
-      'Designated Gazebo',
-      'PLEXIGLASS SMOKING SHED · HR LOT C',
-      '#38bdf8',
-      '#172554'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/designated-gazebo.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['designated-gazebo'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['designated-gazebo'],
     coords: { x: '73%', y: '30%' },
@@ -327,14 +268,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '68°F · High-Altitude Breeze',
     risk: 'ZERO SUPERVISION',
     riskTone: 'success',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-09',
-      'Executive Balcony',
-      '84TH FLOOR CORNER TERRACE · SKYLINE',
-      '#f59e0b',
-      '#1e1b4b'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/executive-balcony.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['executive-balcony'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['executive-balcony'],
     coords: { x: '17%', y: '70%' },
@@ -358,14 +293,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '72°F · Pyrotechnic Haze',
     risk: 'TOUR MANAGER NOD',
     riskTone: 'warning',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-10',
-      'Concert Side-Stage',
-      'VIP ALL-ACCESS RISER · AMP WALL',
-      '#f43f5e',
-      '#3b0764'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/concert-side-stage.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['concert-side-stage'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['concert-side-stage'],
     coords: { x: '37%', y: '34%' },
@@ -389,14 +318,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '74°F · Mediterranean Spray',
     risk: 'MARITIME SOVEREIGN',
     riskTone: 'success',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-11',
-      'Superyacht Aft Deck',
-      'MONACO HARBOR MOORING · TEAK AFT',
-      '#10b981',
-      '#042f2e'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/superyacht-aft-deck.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['superyacht-aft-deck'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['superyacht-aft-deck'],
     coords: { x: '56%', y: '68%' },
@@ -420,14 +343,8 @@ export const ENVIRONMENTS: readonly SmokeEnvironment[] = [
     weather: '65°F · Stratospheric Calm',
     risk: 'YOU OWN THE BUILDING',
     riskTone: 'error',
-    image: buildBlueprintPlaceholderSvg(
-      'SEC-12',
-      'Penthouse Helipad',
-      'SOVEREIGN ROOFTOP PAD · HELIPAD',
-      '#84cc16',
-      '#422006'
-    ),
-    isPlaceholderArt: true,
+    image: resolveEnvironmentImagePath('environments/penthouse-helipad.jpg'),
+    isPlaceholderArt: false,
     sectorQuotaRequired: SECTOR_QUOTAS['penthouse-helipad'],
     unlockSmokedRequired: UNLOCK_THRESHOLDS['penthouse-helipad'],
     coords: { x: '73%', y: '30%' },
@@ -452,6 +369,7 @@ export function EnvironmentDeck({
   unlockedEnvironments,
   unlockedPhase = 1,
   shiftStarted = false,
+  hotkeysDisabled = false,
 }: {
   current: SmokeEnvironment;
   onSelect: (id: EnvironmentId) => void;
@@ -459,20 +377,25 @@ export function EnvironmentDeck({
   unlockedEnvironments?: readonly EnvironmentId[];
   unlockedPhase?: CampaignPhaseId;
   shiftStarted?: boolean;
+  hotkeysDisabled?: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(false);
   const [selectedPhase, setSelectedPhase] = useState<CampaignPhaseId>(current.phase);
 
   useEffect(() => {
     setSelectedPhase(current.phase);
   }, [current.phase]);
 
+  useEffect(() => {
+    if (shiftStarted) setOpen(false);
+  }, [shiftStarted]);
+
   const effectiveUnlocked =
     unlockedEnvironments ?? (getUnlockedEnvironments(lifetimeSmoked) as EnvironmentId[]);
   const phaseEnvironments = ENVIRONMENTS.filter(env => env.phase === selectedPhase);
 
   useEffect(() => {
-    if (shiftStarted) return;
+    if (shiftStarted || hotkeysDisabled) return;
     const onKey = (event: KeyboardEvent) => {
       if (isEditableEventTarget(event.target)) {
         return;
@@ -484,99 +407,109 @@ export function EnvironmentDeck({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onSelect, phaseEnvironments, shiftStarted]);
+  }, [onSelect, phaseEnvironments, shiftStarted, hotkeysDisabled]);
+
+  if (shiftStarted) return null;
 
   return (
     <section
-      className={`hud-panel env-deck ${collapsed ? 'is-collapsed' : ''}`}
+      className={`hud-panel env-deck ${open ? 'is-open' : 'is-collapsed'}`}
       aria-label="Smoke break environment"
       onPointerDown={e => e.stopPropagation()}
     >
-      <div className="env-deck-header">
-        <div>
-          <span className="eyebrow">BREAK ENVIRONMENT · {current.sector}</span>
-          <strong>
-            {current.name} <span className="env-deck-vibe">— {current.vibe}</span>
-          </strong>
-        </div>
-        <div className="env-deck-actions">
-          <div className="env-phase-switcher" role="group" aria-label="Campaign phase">
-            {([1, 2, 3] as const).map(phaseId => {
-              const phaseLocked = phaseId > unlockedPhase && !effectiveUnlocked.some(id => getEnvironment(id).phase === phaseId);
+      {open && (
+        <div className="env-deck-popover">
+          <div className="env-popover-topbar">
+            <span className="eyebrow">SELECT BREAK ENVIRONMENT · {current.sector}</span>
+            <div className="env-phase-switcher" role="group" aria-label="Campaign phase">
+              {([1, 2, 3] as const).map(phaseId => {
+                const phaseLocked =
+                  phaseId > unlockedPhase &&
+                  !effectiveUnlocked.some(id => getEnvironment(id).phase === phaseId);
+                return (
+                  <button
+                    key={phaseId}
+                    type="button"
+                    className={`env-phase-pill ${selectedPhase === phaseId ? 'active' : ''} ${phaseLocked ? 'is-locked' : ''}`}
+                    aria-pressed={selectedPhase === phaseId}
+                    onClick={e => {
+                      e.currentTarget.blur();
+                      setSelectedPhase(phaseId);
+                    }}
+                  >
+                    P{phaseId}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="env-deck-grid" role="radiogroup" aria-label="Environment options">
+            {phaseEnvironments.map(env => {
+              const active = env.id === current.id;
+              const unlocked = unlockedEnvironments
+                ? effectiveUnlocked.includes(env.id)
+                : effectiveUnlocked.includes(env.id) || lifetimeSmoked >= env.unlockSmokedRequired;
               return (
                 <button
-                  key={phaseId}
+                  key={env.id}
                   type="button"
-                  className={`env-phase-pill ${selectedPhase === phaseId ? 'active' : ''} ${phaseLocked ? 'is-locked' : ''}`}
-                  aria-pressed={selectedPhase === phaseId}
+                  role="radio"
+                  aria-checked={active}
+                  className={`env-spot-card ${active ? 'active' : ''} ${unlocked ? 'is-unlocked' : 'is-milestone-locked'}`}
                   onClick={e => {
                     e.currentTarget.blur();
-                    setSelectedPhase(phaseId);
+                    onSelect(env.id);
+                    setOpen(false);
                   }}
                 >
-                  P{phaseId}
+                  <div className="env-spot-thumb">
+                    <img src={env.image} alt={env.name} loading="eager" />
+                    <span className="env-spot-kbd">{env.keyHint}</span>
+                    <span
+                      className={`env-spot-unlock-tag ${unlocked ? 'unlocked' : 'locked'}`}
+                      aria-label={
+                        unlocked
+                          ? `${env.name} unlocked`
+                          : `Unlock milestone: ${env.unlockSmokedRequired} lifetime cigarettes`
+                      }
+                    >
+                      {unlocked ? 'UNLOCKED' : `${env.unlockSmokedRequired} BUTTS`}
+                    </span>
+                    {active && <span className="env-spot-active-tag">ACTIVE</span>}
+                  </div>
+                  <div className="env-spot-body">
+                    <strong>{env.name}</strong>
+                    <span>{unlocked ? env.weather : `${env.weather} · Quota ${env.sectorQuotaRequired} butts`}</span>
+                  </div>
                 </button>
               );
             })}
           </div>
+        </div>
+      )}
+
+      <div className="env-deck-header">
+        <div className="env-deck-summary">
+          <span className="env-chip-code">{current.code}</span>
+          <strong className="env-chip-name">{current.name}</strong>
+          <span className="env-deck-vibe">— {current.vibe}</span>
+        </div>
+        <div className="env-deck-actions">
           <span className={`status-pill status-pill-${current.riskTone}`}>{current.risk}</span>
           <button
             type="button"
             className="env-collapse-btn"
-            aria-expanded={!collapsed}
+            aria-expanded={open}
             onClick={e => {
               e.currentTarget.blur();
-              setCollapsed(c => !c);
+              setOpen(o => !o);
             }}
           >
-            {collapsed ? `Show Spots (${phaseEnvironments.length})` : 'Minimize'}
+            {open ? 'Close' : 'Change Spot'}
           </button>
         </div>
       </div>
-
-      {!collapsed && (
-        <div className="env-deck-grid" role="radiogroup" aria-label="Environment options">
-          {phaseEnvironments.map(env => {
-            const active = env.id === current.id;
-            const unlocked = unlockedEnvironments
-              ? effectiveUnlocked.includes(env.id)
-              : effectiveUnlocked.includes(env.id) || lifetimeSmoked >= env.unlockSmokedRequired;
-            return (
-              <button
-                key={env.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                className={`env-spot-card ${active ? 'active' : ''} ${unlocked ? 'is-unlocked' : 'is-milestone-locked'}`}
-                onClick={e => {
-                  e.currentTarget.blur();
-                  onSelect(env.id);
-                }}
-              >
-                <div className="env-spot-thumb">
-                  <img src={env.image} alt={env.name} loading="eager" />
-                  <span className="env-spot-kbd">{env.keyHint}</span>
-                  <span
-                    className={`env-spot-unlock-tag ${unlocked ? 'unlocked' : 'locked'}`}
-                    aria-label={
-                      unlocked
-                        ? `${env.name} unlocked`
-                        : `Unlock milestone: ${env.unlockSmokedRequired} lifetime cigarettes`
-                    }
-                  >
-                    {unlocked ? 'UNLOCKED' : `${env.unlockSmokedRequired} BUTTS`}
-                  </span>
-                  {active && <span className="env-spot-active-tag">ACTIVE</span>}
-                </div>
-                <div className="env-spot-body">
-                  <strong>{env.name}</strong>
-                  <span>{unlocked ? env.weather : `${env.weather} · Quota ${env.sectorQuotaRequired} butts`}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </section>
   );
 }

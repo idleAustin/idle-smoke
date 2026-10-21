@@ -1,8 +1,7 @@
 // Server-authoritative v1 API routes for 2-digit code Smoke Sessions (create, join, poll, and start).
 import { authenticatePlayer } from './playerAuthRoutes.js';
 import { isValidEnvironmentId } from './shiftVerifier.js';
-import { getUnlockedEnvironments } from './starSchema.js';
-import { SMOKE_SESSION_TTL_SECONDS } from './storeQueries.js';
+import { SMOKE_SESSION_TTL_SECONDS, formatPlayerProfile } from './storeQueries.js';
 
 const MAX_SESSION_PARTICIPANTS = 16;
 
@@ -34,11 +33,20 @@ function generateAvailableSessionCode(activeCodes) {
  *   req: { authHeader?: string | null },
  *   body: Record<string, unknown>,
  *   store: ReturnType<typeof import('./sqliteDb.js').createSqliteStore>,
- *   nowUnix: number
+ *   nowUnix: number,
+ *   rawAdminEmails?: string
  * }} ctx
  * @returns {Promise<{ status: number, body: Record<string, unknown> } | null>}
  */
-export async function handleSmokeSessionRoutes({ method, route, req, body, store, nowUnix }) {
+export async function handleSmokeSessionRoutes({
+  method,
+  route,
+  req,
+  body,
+  store,
+  nowUnix,
+  rawAdminEmails,
+}) {
   if (route !== '/api/v1/sessions' && !route.startsWith('/api/v1/sessions/')) {
     return null;
   }
@@ -55,7 +63,7 @@ export async function handleSmokeSessionRoutes({ method, route, req, body, store
     if (!isValidEnvironmentId(requestedEnv)) {
       return { status: 400, body: { error: 'Invalid break environmentId' } };
     }
-    const unlocked = getUnlockedEnvironments(Number(playerRow.lifetime_smoked ?? 0));
+    const unlocked = formatPlayerProfile(playerRow, rawAdminEmails).unlockedEnvironments;
     if (!unlocked.includes(requestedEnv)) {
       return { status: 400, body: { error: `Environment '${requestedEnv}' is locked` } };
     }

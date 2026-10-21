@@ -199,23 +199,32 @@ function normalizePlatformId(value: unknown): PlatformId {
 }
 
 export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
+  const isAdmin = raw.isAdmin === true;
   const lifetimeSmoked = Number(raw.lifetimeSmoked ?? 0);
   const rawPromo = Number(raw.promotionRoundsCleared ?? raw.promotion_rounds_cleared ?? 0);
-  const promotionRoundsCleared = Number.isFinite(rawPromo)
-    ? Math.max(0, Math.min(9, Math.floor(rawPromo)))
-    : 0;
+  const promotionRoundsCleared = isAdmin
+    ? 9
+    : Number.isFinite(rawPromo)
+      ? Math.max(0, Math.min(9, Math.floor(rawPromo)))
+      : 0;
   const rawSmokedByEnv = raw.smokedByEnvironment ?? raw.smoked_by_environment;
   const smokedByEnvironment = buildSmokedByEnvironmentMap(
     rawSmokedByEnv as Record<string, unknown> | undefined,
     lifetimeSmoked
   ) as Record<EnvironmentId, number>;
-  const unlockedPhase = getUnlockedPhase(promotionRoundsCleared);
-  const isChairman = promotionRoundsCleared >= 9;
-  const unlockedRaw = Array.isArray(raw.unlockedEnvironments)
-    ? (raw.unlockedEnvironments as EnvironmentId[])
-    : rawSmokedByEnv
-      ? (getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared }) as EnvironmentId[])
-      : (getUnlockedEnvironments(lifetimeSmoked) as EnvironmentId[]);
+  const unlockedPhase = isAdmin ? 3 : getUnlockedPhase(promotionRoundsCleared);
+  const isChairman = isAdmin || promotionRoundsCleared >= 9;
+  const unlockedRaw = isAdmin
+    ? (getUnlockedEnvironments({
+        smokedByEnvironment,
+        promotionRoundsCleared: 9,
+        isAdmin: true,
+      }) as EnvironmentId[])
+    : Array.isArray(raw.unlockedEnvironments)
+      ? (raw.unlockedEnvironments as EnvironmentId[])
+      : rawSmokedByEnv
+        ? (getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared }) as EnvironmentId[])
+        : (getUnlockedEnvironments(lifetimeSmoked) as EnvironmentId[]);
   const providerRaw = raw.authProvider;
   const authProvider: AuthProviderId | undefined =
     providerRaw === 'apple' || providerRaw === 'google' || providerRaw === 'password'
@@ -237,7 +246,7 @@ export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
     unlockedEnvironments: unlockedRaw.length > 0 ? unlockedRaw : ['alleyway'],
     ...(authProvider ? { authProvider } : {}),
     ...(authEmail ? { authEmail } : {}),
-    ...(raw.isAdmin === true ? { isAdmin: true } : {}),
+    ...(isAdmin ? { isAdmin: true } : {}),
   };
 }
 
@@ -365,6 +374,7 @@ export function enqueueOfflineShift(params: {
       environmentId: effectiveEnvironmentId,
       smokedByEnvironment: params.baseProfile.smokedByEnvironment,
       promotionRoundsCleared: params.baseProfile.promotionRoundsCleared,
+      isAdmin: params.baseProfile.isAdmin,
     }
   );
   const optimisticProfile: PlayerProfile = {

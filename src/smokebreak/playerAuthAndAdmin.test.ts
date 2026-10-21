@@ -544,7 +544,8 @@ describe('Player Authentication, OAuth, Account Deletion & Admin Taglines API', 
       );
       expect(wrongAdminPass.status).toBe(401);
 
-      // Signing in via /api/v1/auth/login with an allowlisted admin email + Doppler ADMIN_PASSCODE grants isAdmin
+      // Signing in via /api/v1/auth/login with an allowlisted admin email + Doppler ADMIN_PASSCODE grants isAdmin and unlocks all sectors/phases
+      const adminEnv = { ADMIN_EMAILS: ephemeralAdminEmail, ADMIN_PASSCODE: ephemeralPasscode };
       const adminEmailLogin = await handleApiRequest(
         {
           method: 'POST',
@@ -557,12 +558,76 @@ describe('Player Authentication, OAuth, Account Deletion & Admin Taglines API', 
           }),
         },
         store,
-        { env: { ADMIN_EMAILS: ephemeralAdminEmail, ADMIN_PASSCODE: ephemeralPasscode } }
+        { env: adminEnv }
       );
       expect(adminEmailLogin.status).toBe(200);
-      expect(adminEmailLogin.body.isAdmin).toBe(true);
-      expect(adminEmailLogin.body.authEmail).toBe(ephemeralAdminEmail);
+      expect(adminEmailLogin.body).toMatchObject({
+        isAdmin: true,
+        authEmail: ephemeralAdminEmail,
+        lifetimeSmoked: 0,
+        unlockedPhase: 3,
+        promotionRoundsCleared: 9,
+        isChairman: true,
+        unlockedEnvironments: [
+          'alleyway',
+          'restaurant',
+          'parking-garage',
+          'dumpster',
+          'office-sidewalk',
+          'breakroom-patio',
+          'strip-mall-median',
+          'designated-gazebo',
+          'executive-balcony',
+          'concert-side-stage',
+          'superyacht-aft-deck',
+          'penthouse-helipad',
+        ],
+      });
       const adminToken = String(adminEmailLogin.body.playerToken);
+
+      // Admin can immediately start and finish a shift in Phase 3 Sector 12 ('penthouse-helipad') with 0 prior butts
+      const adminStartShift = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/start',
+          authHeader: `Bearer ${adminToken}`,
+          rawBody: JSON.stringify({ environmentId: 'penthouse-helipad', platform: 'web' }),
+        },
+        store,
+        { env: adminEnv }
+      );
+      expect(adminStartShift.status).toBe(201);
+      expect(adminStartShift.body.environmentId).toBe('penthouse-helipad');
+
+      const adminFinishShift = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/shifts/finish',
+          authHeader: `Bearer ${adminToken}`,
+          rawBody: JSON.stringify({
+            shiftId: adminStartShift.body.shiftId,
+            environmentId: 'penthouse-helipad',
+            pressOffsetsMs: makeOffsets(12, 100),
+          }),
+        },
+        store,
+        { env: adminEnv }
+      );
+      expect(adminFinishShift.status).toBe(200);
+      expect(adminFinishShift.body.verified).toBe(true);
+
+      // Admin can immediately host a Smoke Session in 'penthouse-helipad'
+      const adminSessionRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/sessions',
+          authHeader: `Bearer ${adminToken}`,
+          rawBody: JSON.stringify({ environmentId: 'penthouse-helipad' }),
+        },
+        store,
+        { env: adminEnv }
+      );
+      expect(adminSessionRes.status).toBe(201);
 
       const adminGetViaBearer = await handleApiRequest(
         {
@@ -571,7 +636,7 @@ describe('Player Authentication, OAuth, Account Deletion & Admin Taglines API', 
           authHeader: `Bearer ${adminToken}`,
         },
         store,
-        { env: { ADMIN_EMAILS: ephemeralAdminEmail, ADMIN_PASSCODE: ephemeralPasscode } }
+        { env: adminEnv }
       );
       expect(adminGetViaBearer.status).toBe(200);
     } finally {

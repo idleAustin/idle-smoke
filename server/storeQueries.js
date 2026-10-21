@@ -465,24 +465,27 @@ function envIdOrFallback(id) {
  */
 export function formatPlayerProfile(row, rawAdminEmails) {
   const lifetimeSmoked = Number(row.lifetime_smoked ?? 0);
+  const authProvider = row.auth_provider ? String(row.auth_provider) : undefined;
+  const authEmail = row.auth_email ? String(row.auth_email) : undefined;
+  const isAdmin =
+    Boolean(authProvider) && isEmailInAdminList(authEmail, rawAdminEmails);
   const rawPromo = Number(row.promotion_rounds_cleared ?? 0);
-  const promotionRoundsCleared = Number.isFinite(rawPromo)
+  const basePromotionRoundsCleared = Number.isFinite(rawPromo)
     ? Math.max(0, Math.min(9, Math.floor(rawPromo)))
     : 0;
+  const promotionRoundsCleared = isAdmin ? 9 : basePromotionRoundsCleared;
   const rawSmokedByEnv = row.smoked_by_environment ?? row.smokedByEnvironment;
   const smokedByEnvironment = buildSmokedByEnvironmentMap(
     /** @type {Record<string, unknown> | Array<Record<string, unknown>> | undefined} */ (rawSmokedByEnv),
     lifetimeSmoked
   );
-  const unlockedPhase = getUnlockedPhase(promotionRoundsCleared);
-  const isChairman = promotionRoundsCleared >= 9;
-  const unlockedEnvironments = rawSmokedByEnv
-    ? getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared })
-    : getUnlockedEnvironments(lifetimeSmoked);
-  const authProvider = row.auth_provider ? String(row.auth_provider) : undefined;
-  const authEmail = row.auth_email ? String(row.auth_email) : undefined;
-  const isAdmin =
-    Boolean(authProvider) && isEmailInAdminList(authEmail, rawAdminEmails);
+  const unlockedPhase = isAdmin ? 3 : getUnlockedPhase(promotionRoundsCleared);
+  const isChairman = isAdmin ? true : promotionRoundsCleared >= 9;
+  const unlockedEnvironments = isAdmin
+    ? getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared: 9, isAdmin: true })
+    : rawSmokedByEnv
+      ? getUnlockedEnvironments({ smokedByEnvironment, promotionRoundsCleared })
+      : getUnlockedEnvironments(lifetimeSmoked);
   return {
     playerId: String(row.id),
     callsign: String(row.callsign),

@@ -100,7 +100,7 @@ export function UserCircleTrigger({
                 className="ship proto-acct-open-profile-btn full"
                 onClick={onOpenSettingsModal}
               >
-                ⚙️ Open Profile &amp; Account Settings →
+                Open Profile &amp; Account Settings →
               </button>
               {showChangeModeAction && onChangeMode && (
                 <button
@@ -108,7 +108,7 @@ export function UserCircleTrigger({
                   className="proto-acct-btn-secondary full"
                   onClick={() => { onToggleQuickCard(); onChangeMode(); }}
                 >
-                  🗺️ Switch Game Mode / Map
+                  Switch Game Mode / Map
                 </button>
               )}
               <button
@@ -117,7 +117,7 @@ export function UserCircleTrigger({
                 disabled={busy}
                 onClick={onSignOut}
               >
-                ⇥ Sign Out
+                Sign Out
               </button>
             </div>
           </div>
@@ -300,7 +300,7 @@ export function AccountSettingsModal({
                       butts · {profile.shiftsCompleted} shifts
                     </small>
                   </div>
-                  <span className="proto-chip">{profile.unlockedEnvironments.length}/4 Spots</span>
+                  <span className="proto-chip">{profile.unlockedEnvironments.length}/12 Spots</span>
                 </div>
 
                 <div className="proto-chatgpt-row">

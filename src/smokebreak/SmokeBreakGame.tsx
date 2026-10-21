@@ -369,6 +369,7 @@ export function SmokeBreakGame({
       environmentId: effectiveShiftEnvId,
       smokedByEnvironment: profile.smokedByEnvironment,
       promotionRoundsCleared: profile.promotionRoundsCleared,
+      isAdmin: profile.isAdmin,
     }
   );
   const hasResolvedShift = shiftResult !== null;
@@ -432,8 +433,9 @@ export function SmokeBreakGame({
           onSelect={setEnvId}
           lifetimeSmoked={reportLifetimeSmoked}
           unlockedEnvironments={reportUnlockedEnvironments}
-          unlockedPhase={profile.unlockedPhase}
-          shiftStarted={state.startedAt !== undefined || isLobbyOpen || isSettingsModalOpen}
+          unlockedPhase={profile.isAdmin ? 3 : profile.unlockedPhase}
+          shiftStarted={state.startedAt !== undefined}
+          hotkeysDisabled={isLobbyOpen || isSettingsModalOpen}
         />
         <SmokeTallyPanel
           smoked={state.smoked} progress={state.progress} remaining={remaining}

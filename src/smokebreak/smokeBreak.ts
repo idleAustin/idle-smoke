@@ -181,11 +181,13 @@ export function projectShiftProgression(
     environmentId: EnvironmentId;
     smokedByEnvironment: Record<EnvironmentId, number>;
     promotionRoundsCleared: number;
+    isAdmin?: boolean;
   }
 ) {
   const nextLifetimeSmoked = lifetimeSmoked + shiftSmoked;
   const nextBestSmoked = Math.max(bestSmoked, shiftSmoked);
   if (context) {
+    const isAdmin = Boolean(context.isAdmin);
     const promo = evaluatePromotionAttempt({
       environmentId: context.environmentId,
       shiftSmoked,
@@ -196,10 +198,15 @@ export function projectShiftProgression(
       ...context.smokedByEnvironment,
       [context.environmentId]: (context.smokedByEnvironment[context.environmentId] ?? 0) + shiftSmoked,
     };
-    const nextUnlockedEnvironments = getUnlockedEnvironments({
+    const nextPromotionRoundsCleared = isAdmin ? 9 : promo.newPromotionRoundsCleared;
+    const computedUnlocked = getUnlockedEnvironments({
       smokedByEnvironment: nextSmokedByEnvironment,
-      promotionRoundsCleared: promo.newPromotionRoundsCleared,
+      promotionRoundsCleared: nextPromotionRoundsCleared,
+      isAdmin,
     }) as EnvironmentId[];
+    const nextUnlockedEnvironments = Array.from(
+      new Set<EnvironmentId>([...previousUnlocked, ...computedUnlocked])
+    );
     const newlyUnlockedEnvironments = nextUnlockedEnvironments.filter(
       id => !previousUnlocked.includes(id)
     );
@@ -207,14 +214,17 @@ export function projectShiftProgression(
       lifetimeSmoked: nextLifetimeSmoked,
       bestSmoked: nextBestSmoked,
       smokedByEnvironment: nextSmokedByEnvironment,
-      promotionRoundsCleared: promo.newPromotionRoundsCleared,
-      unlockedPhase: promo.unlockedPhase as 1 | 2 | 3,
-      isChairman: promo.isChairman,
+      promotionRoundsCleared: nextPromotionRoundsCleared,
+      unlockedPhase: (isAdmin ? 3 : promo.unlockedPhase) as 1 | 2 | 3,
+      isChairman: isAdmin || promo.isChairman,
       unlockedEnvironments: nextUnlockedEnvironments,
       newlyUnlockedEnvironments,
     };
   }
-  const nextUnlockedEnvironments = getUnlockedEnvironments(nextLifetimeSmoked) as EnvironmentId[];
+  const computedUnlocked = getUnlockedEnvironments(nextLifetimeSmoked) as EnvironmentId[];
+  const nextUnlockedEnvironments = Array.from(
+    new Set<EnvironmentId>([...previousUnlocked, ...computedUnlocked])
+  );
   const newlyUnlockedEnvironments = nextUnlockedEnvironments.filter(id => !previousUnlocked.includes(id));
   return {
     lifetimeSmoked: nextLifetimeSmoked,

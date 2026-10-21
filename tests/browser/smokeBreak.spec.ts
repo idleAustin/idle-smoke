@@ -95,34 +95,46 @@ test('signs in, navigates pre-shift lobby and HUD back actions, completes a 15-s
   await profileBtn.click();
   const quickCard = page.getByRole('dialog', { name: 'Quick User Profile Card' });
   await expect(quickCard).toContainText('DOCK-LEAD');
+  await expect(quickCard).toHaveCSS('background-color', 'rgb(18, 18, 22)');
+  await expect(quickCard).toHaveCSS('padding', '0px');
   await profileBtn.click();
   await expect(quickCard).toBeHidden();
 
-  // Environment deck displays unlock milestone badges (5, 15, 30 lifetime cigarettes).
+  // Compact EnvironmentDeck starts collapsed as a location pill; clicking Change Spot opens the popover.
+  const envDeck = page.getByRole('region', { name: 'Smoke break environment' });
+  await expect(envDeck).toBeVisible();
+  await expect(envDeck).toHaveClass(/is-collapsed/);
+  await expect(envDeck.locator('.env-deck-popover')).toBeHidden();
+
+  await envDeck.getByRole('button', { name: 'Change Spot' }).click();
+  await expect(envDeck.locator('.env-deck-popover')).toBeVisible();
   await expect(page.getByLabel('Unlock milestone: 5 lifetime cigarettes')).toHaveText('5 BUTTS');
   await expect(page.getByLabel('Unlock milestone: 15 lifetime cigarettes')).toHaveText('15 BUTTS');
   await expect(page.getByLabel('Unlock milestone: 30 lifetime cigarettes')).toHaveText('30 BUTTS');
 
-  // Clock waits until the first drag, even when switching environments.
+  // Clock waits until the first drag; selecting a spot switches backdrop and automatically closes popover.
   await expect(page.getByRole('img', { name: 'Environment backdrop: Alleyway' })).toBeVisible();
   await page.getByRole('radio', { name: /Parking Garage/ }).click();
   await expect(page.getByRole('img', { name: 'Environment backdrop: Parking Garage' })).toBeVisible();
+  await expect(envDeck.locator('.env-deck-popover')).toBeHidden();
   await page.clock.fastForward(5_000);
   await expect(timer).toHaveText('0:15');
 
-  // 12 Space presses finish one cigarette and stub it out in the tray; HUD back button hides once shift starts.
+  // 12 Space presses finish one cigarette and stub it out in the tray; HUD back button and EnvironmentDeck hide once shift starts.
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Space');
   }
   await expect(hudBackBtn).toBeHidden();
+  await expect(envDeck).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Keep dragging.' })).toBeVisible();
   await expect(tally.locator('strong')).toHaveText('1');
 
-  // Fast-forward the 15-second break clock to completion.
+  // Fast-forward the 15-second break clock to completion; EnvironmentDeck remains hidden on Break Report.
   await page.clock.fastForward(15_000);
   await expect(timer).toHaveText('0:00');
   const dialog = page.getByRole('dialog', { name: '1 cigarette in 15 seconds' });
   await expect(dialog).toBeVisible();
+  await expect(envDeck).toBeHidden();
   await expect(dialog.getByRole('region', { name: 'Global Top 10 Leaderboard' })).toContainText('DOCK-LEAD');
   await expect(dialog.getByRole('region', { name: 'Global Top 10 Leaderboard' })).toContainText('1 butts');
 
@@ -136,6 +148,8 @@ test('signs in, navigates pre-shift lobby and HUD back actions, completes a 15-s
   await expect(dialog).toBeHidden();
   await expect(timer).toHaveText('0:15');
   await expect(tally.locator('strong')).toHaveText('0');
+  await expect(envDeck).toBeVisible();
+  await expect(envDeck).toHaveClass(/is-collapsed/);
   await expect(page.getByRole('img', { name: 'Environment backdrop: Parking Garage' })).toBeVisible();
 
   // Step 5: Reloading while signed in bypasses login dialog and lands on Select Game Mode; signing out returns to login.
@@ -252,10 +266,49 @@ test('navigates 3-Phase Campaign Blueprint Map and 3-Round Promotion Inspector, 
     }
   }
 
-  // Restore desktop viewport and deploy to Alleyway
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await mapRegion.getByRole('button', { name: /SEC-01.*Alleyway/i }).click();
-  await mapRegion.getByRole('button', { name: /Deploy to Alleyway/ }).click();
+  // Navigate back to Select Game Mode at 390x844 and verify Sandbox phase switcher & spot pills
+  await mapRegion.getByRole('button', { name: '← Game Modes' }).click();
+  await expect(modeRegion).toBeVisible();
+  const sandboxPhaseGroup = modeRegion.getByRole('group', { name: 'Sandbox phase' });
+  await expect(sandboxPhaseGroup).toBeVisible();
+  await expect(sandboxPhaseGroup.getByRole('button', { name: 'P1' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(sandboxPhaseGroup.getByRole('button', { name: 'P2' })).toBeVisible();
+  await expect(sandboxPhaseGroup.getByRole('button', { name: 'P3' })).toBeVisible();
+
+  const spotPills = modeRegion.locator('.proto-a-spot-pills');
+  await expect(spotPills).toBeVisible();
+  await expect(spotPills).not.toContainText('🔒');
+  await sandboxPhaseGroup.getByRole('button', { name: 'P2' }).click();
+  await expect(spotPills).toContainText('Office Sidewalk');
+  await expect(spotPills).toContainText('[LOCKED]');
+  await expect(spotPills).not.toContainText('🔒');
+  await sandboxPhaseGroup.getByRole('button', { name: 'P1' }).click();
+
+  // Deploy to smoking screen at 390x844 and verify zero overlap among HUD panels
+  await modeRegion.getByRole('button', { name: /Quick Smoke \(Alleyway\)/ }).click();
+  const hudSelectors = ['.hud-command', '.smoke-brief', '.env-deck', '.smoke-tally'];
+  const hudBoxes = [];
+  for (const sel of hudSelectors) {
+    const loc = page.locator(sel);
+    await expect(loc).toBeVisible();
+    const box = await loc.boundingBox();
+    expect(box).not.toBeNull();
+    hudBoxes.push(box!);
+  }
+  for (let i = 0; i < hudBoxes.length; i++) {
+    for (let j = i + 1; j < hudBoxes.length; j++) {
+      const a = hudBoxes[i];
+      const b = hudBoxes[j];
+      const overlapsX = a.x < b.x + b.width - 1 && a.x + a.width - 1 > b.x;
+      const overlapsY = a.y < b.y + b.height - 1 && a.y + a.height - 1 > b.y;
+      expect(
+        overlapsX && overlapsY,
+        `${hudSelectors[i]} (${JSON.stringify(a)}) overlaps ${hudSelectors[j]} (${JSON.stringify(b)})`
+      ).toBe(false);
+    }
+  }
+  // Verify center of 3D viewport is unobstructed between top (.smoke-brief) and bottom (.env-deck) panels
+  expect(hudBoxes[2].y - (hudBoxes[1].y + hudBoxes[1].height)).toBeGreaterThan(150);
 
   // Verify pre-shift Digit1..4 switches EnvironmentDeck without starting the clock
   const timer = page.getByRole('timer', { name: 'Smoke break time remaining' });
@@ -279,6 +332,7 @@ test('navigates 3-Phase Campaign Blueprint Map and 3-Round Promotion Inspector, 
   for (let i = 0; i < 120; i++) {
     await page.keyboard.press(drumKeys[i % drumKeys.length]);
   }
+  await expect(page.locator('.env-deck')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Keep dragging.' })).toBeVisible();
   await expect(tally.locator('strong')).toHaveText('10');
   await expect(briefPanel).toContainText('8 DRAGS / BUTT · TURBO');

@@ -497,10 +497,11 @@
   .proto-overlay.proto-modes-screen {
     align-items: flex-start;
     padding: calc(10px + var(--safe-area-top)) calc(10px + var(--safe-area-right))
-      calc(84px + var(--safe-area-bottom)) calc(10px + var(--safe-area-left));
+      calc(24px + var(--safe-area-bottom)) calc(10px + var(--safe-area-left));
   }
   .proto-map-shell { padding: 14px; gap: 12px; }
   .proto-map-topbar h2 { font-size: 17px; }
+  .proto-mode-banner { height: 84px; }
   .proto-phase-strata-bar { grid-template-columns: 1fr; gap: 6px; }
   .hud-panel button.proto-phase-tab, .proto-phase-tab { min-height: 44px; padding: 8px 12px; }
   .proto-phase-tab small { display: none; }

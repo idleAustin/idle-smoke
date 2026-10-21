@@ -103,9 +103,10 @@ export function CampaignSectorMap({
     smokedByEnv.alleyway = profile.lifetimeSmoked;
   }
 
-  const promotionRoundsCleared = profile.promotionRoundsCleared ?? 0;
-  const unlockedPhase = profile.unlockedPhase ?? getUnlockedPhase(promotionRoundsCleared);
-  const isChairman = profile.isChairman ?? promotionRoundsCleared >= 9;
+  const isAdmin = Boolean(profile.isAdmin);
+  const promotionRoundsCleared = isAdmin ? 9 : (profile.promotionRoundsCleared ?? 0);
+  const unlockedPhase = isAdmin ? 3 : (profile.unlockedPhase ?? getUnlockedPhase(promotionRoundsCleared));
+  const isChairman = isAdmin || (profile.isChairman ?? promotionRoundsCleared >= 9);
 
   const activePhase =
     CAMPAIGN_PHASES.find(p => p.phase === selectedPhase) ?? CAMPAIGN_PHASES[0];
@@ -118,16 +119,17 @@ export function CampaignSectorMap({
   );
   const isPhasePromoted = roundsClearedInPhase >= 3;
   const promotionUnlocked =
+    isAdmin ||
     isPhasePromoted ||
     (activePhase.phase <= unlockedPhase &&
-      isPhasePromotionUnlocked(activePhase.phase, smokedByEnv));
+      isPhasePromotionUnlocked(activePhase.phase, smokedByEnv, isAdmin));
   const nextRoundNumber = roundsClearedInPhase < 3 ? roundsClearedInPhase + 1 : 3;
   const nextRoundTarget =
     activePhase.promotionTargets[roundsClearedInPhase < 3 ? roundsClearedInPhase : 2];
 
   const activeSector =
     phaseSectors.find(s => s.id === selectedSectorId) ?? phaseSectors[0];
-  const isActiveSectorUnlocked = unlockedEnvironments.includes(activeSector.id);
+  const isActiveSectorUnlocked = isAdmin || unlockedEnvironments.includes(activeSector.id);
   const smokedInActiveSector = smokedByEnv[activeSector.id] ?? 0;
   const quotaPct = Math.min(
     100,
@@ -140,7 +142,7 @@ export function CampaignSectorMap({
     const firstInPhase = ENVIRONMENTS.find(s => s.phase === phaseId) ?? ENVIRONMENTS[0];
     setSelectedSectorId(firstInPhase.id);
     setInspectingPromo(false);
-    if (unlockedEnvironments.includes(firstInPhase.id)) {
+    if (isAdmin || unlockedEnvironments.includes(firstInPhase.id)) {
       onSelectEnvironment(firstInPhase.id);
     }
   };
@@ -149,7 +151,7 @@ export function CampaignSectorMap({
     setSelectedPhase(sector.phase);
     setSelectedSectorId(sector.id);
     setInspectingPromo(false);
-    if (unlockedEnvironments.includes(sector.id)) {
+    if (isAdmin || unlockedEnvironments.includes(sector.id)) {
       onSelectEnvironment(sector.id);
     }
   };
@@ -158,7 +160,7 @@ export function CampaignSectorMap({
     const hostId = activePhase.finalSectorId as EnvironmentId;
     setSelectedSectorId(hostId);
     setInspectingPromo(true);
-    if (unlockedEnvironments.includes(hostId)) {
+    if (isAdmin || unlockedEnvironments.includes(hostId)) {
       onSelectEnvironment(hostId);
     }
   };
@@ -201,11 +203,13 @@ export function CampaignSectorMap({
         >
           {CAMPAIGN_PHASES.map(phase => {
             const phaseId = phase.phase as CampaignPhaseId;
-            const unlocked = phaseId <= unlockedPhase;
+            const unlocked = isAdmin || phaseId <= unlockedPhase;
             const active = phaseId === selectedPhase;
-            const clearedCount = ENVIRONMENTS.filter(
-              s => s.phase === phaseId && (smokedByEnv[s.id] ?? 0) >= s.sectorQuotaRequired
-            ).length;
+            const clearedCount = isAdmin
+              ? 4
+              : ENVIRONMENTS.filter(
+                  s => s.phase === phaseId && (smokedByEnv[s.id] ?? 0) >= s.sectorQuotaRequired
+                ).length;
             return (
               <button
                 key={phaseId}
@@ -271,10 +275,10 @@ export function CampaignSectorMap({
             </svg>
 
             {phaseSectors.map((spot, idx) => {
-              const unlocked = unlockedEnvironments.includes(spot.id);
+              const unlocked = isAdmin || unlockedEnvironments.includes(spot.id);
               const selected = !inspectingPromo && spot.id === activeSector.id;
               const count = smokedByEnv[spot.id] ?? 0;
-              const quotaMet = count >= spot.sectorQuotaRequired;
+              const quotaMet = isAdmin || count >= spot.sectorQuotaRequired;
               return (
                 <button
                   key={spot.id}

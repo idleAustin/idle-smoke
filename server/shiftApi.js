@@ -103,8 +103,9 @@ function normalizeJokeCandidates(body) {
  * @param {string | null | undefined} authHeader
  * @param {Record<string, unknown>} body
  * @param {ReturnType<typeof import('./sqliteDb.js').createSqliteStore>} store
+ * @param {string} [rawAdminEmails]
  */
-async function authenticateAndValidateShiftContext(authHeader, body, store) {
+async function authenticateAndValidateShiftContext(authHeader, body, store, rawAdminEmails) {
   const playerRow = await authenticatePlayer(authHeader, store);
   if (!playerRow) {
     return { ok: false, status: 401, error: 'Valid Bearer playerToken required' };
@@ -126,7 +127,7 @@ async function authenticateAndValidateShiftContext(authHeader, body, store) {
     return { ok: false, status: 400, error: 'Invalid break environmentId' };
   }
 
-  const currentProfile = formatPlayerProfile(playerRow);
+  const currentProfile = formatPlayerProfile(playerRow, rawAdminEmails);
   const unlocked = currentProfile.unlockedEnvironments;
   if (!smokeSession && !unlocked.includes(environmentId)) {
     return {
@@ -234,6 +235,7 @@ export async function handleApiRequest(req, store, options = {}) {
     body,
     store,
     nowUnix,
+    rawAdminEmails,
   });
   if (smokeSessionResult) return smokeSessionResult;
 
@@ -296,7 +298,12 @@ export async function handleApiRequest(req, store, options = {}) {
   }
 
   if (route === '/api/v1/shifts/start' && method === 'POST') {
-    const ctx = await authenticateAndValidateShiftContext(req.authHeader, body, store);
+    const ctx = await authenticateAndValidateShiftContext(
+      req.authHeader,
+      body,
+      store,
+      rawAdminEmails
+    );
     if (!ctx.ok) return { status: ctx.status, body: { error: ctx.error } };
 
     const shiftId = globalThis.crypto.randomUUID();
@@ -315,7 +322,12 @@ export async function handleApiRequest(req, store, options = {}) {
   }
 
   if (route === '/api/v1/shifts/finish' && method === 'POST') {
-    const ctx = await authenticateAndValidateShiftContext(req.authHeader, body, store);
+    const ctx = await authenticateAndValidateShiftContext(
+      req.authHeader,
+      body,
+      store,
+      rawAdminEmails
+    );
     if (!ctx.ok) return { status: ctx.status, body: { error: ctx.error } };
 
     const { playerRow, currentProfile, environmentId, platform, previousUnlocked, smokeSession } = ctx;

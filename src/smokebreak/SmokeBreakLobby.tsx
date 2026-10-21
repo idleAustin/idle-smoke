@@ -1,7 +1,14 @@
 // Multi-step pre-shift lobby coordinator, 3-card game mode deck, and 2-digit code Smoke Session lobby router.
 
+import { useEffect, useState } from 'react';
 import { CampaignSectorMap } from './CampaignSectorMap';
-import { ENVIRONMENTS, type EnvironmentId, type SmokeEnvironment } from './EnvironmentDeck';
+import {
+  ENVIRONMENTS,
+  type CampaignPhaseId,
+  type EnvironmentId,
+  type SmokeEnvironment,
+  getEnvironment,
+} from './EnvironmentDeck';
 import { LoginScreen } from './LobbyLoginScreen';
 import { type LeaderboardEntry, type PlayerProfile } from './shiftStorage';
 import { type SmokeSession } from './smokeSessionClient';
@@ -51,8 +58,14 @@ function GameModeDeck({
   onSelectEnvironment: (id: EnvironmentId) => void;
   onSelectMode: (mode: GameModeId) => void;
 }) {
+  const [sandboxPhase, setSandboxPhase] = useState<CampaignPhaseId>(currentEnv.phase);
+
+  useEffect(() => {
+    setSandboxPhase(currentEnv.phase);
+  }, [currentEnv.phase]);
+
   const nextLocked = ENVIRONMENTS.find(e => !unlockedEnvironments.includes(e.id));
-  const phaseSpots = ENVIRONMENTS.filter(e => e.phase === currentEnv.phase);
+  const phaseSpots = ENVIRONMENTS.filter(e => e.phase === sandboxPhase);
 
   return (
     <div
@@ -94,7 +107,7 @@ function GameModeDeck({
                 <strong>
                   {nextLocked
                     ? `${nextLocked.name} (Quota ${nextLocked.sectorQuotaRequired} butts)`
-                    : 'All 12 Sectors Unlocked ★'}
+                    : 'All 12 Sectors Unlocked'}
                 </strong>
               </div>
               <button
@@ -141,9 +154,31 @@ function GameModeDeck({
               <p className="proto-sub">
                 The traditional smoke break simulator. Pick any unlocked spot below and jump straight into the 3D scene.
               </p>
+              <div className="proto-sandbox-spot-header">
+                <span className="eyebrow">SELECT SPOT</span>
+                <div className="env-phase-switcher" role="group" aria-label="Sandbox phase">
+                  {([1, 2, 3] as const).map(phaseId => {
+                    const phaseLocked =
+                      !profile.isAdmin &&
+                      phaseId > (profile.unlockedPhase ?? 1) &&
+                      !unlockedEnvironments.some(id => getEnvironment(id).phase === phaseId);
+                    return (
+                      <button
+                        key={phaseId}
+                        type="button"
+                        className={`env-phase-pill ${sandboxPhase === phaseId ? 'active' : ''} ${phaseLocked ? 'is-locked' : ''}`}
+                        aria-pressed={sandboxPhase === phaseId}
+                        onClick={() => setSandboxPhase(phaseId)}
+                      >
+                        P{phaseId}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="proto-a-spot-pills">
                 {phaseSpots.map(spot => {
-                  const unlocked = unlockedEnvironments.includes(spot.id);
+                  const unlocked = Boolean(profile.isAdmin) || unlockedEnvironments.includes(spot.id);
                   return (
                     <button
                       key={spot.id}
@@ -152,7 +187,8 @@ function GameModeDeck({
                       className={`proto-spot-pill ${spot.id === currentEnv.id ? 'active' : ''} ${!unlocked ? 'locked' : ''}`}
                       onClick={() => onSelectEnvironment(spot.id)}
                     >
-                      <span>{unlocked ? spot.name : `🔒 ${spot.name}`}</span>
+                      <span>{spot.name}</span>
+                      {!unlocked && <small>[LOCKED]</small>}
                     </button>
                   );
                 })}
