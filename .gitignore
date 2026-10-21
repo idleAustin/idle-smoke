@@ -31,9 +31,13 @@ node_modules/
 *.p12
 *.pfx
 
-# Doppler & Wrangler Local State
+# Doppler, Wrangler & Local SQLite State
 .doppler/
 .wrangler/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # ── Build & Output Directories ────────────
 dist/

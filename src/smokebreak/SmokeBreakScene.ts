@@ -1,40 +1,27 @@
+// Three.js smoke break scene: steel ashtray, environment lighting, sidestream/exhale smoke particles, and falling ash/butt animations.
+
 import {
-  ACESFilmicToneMapping, AdditiveBlending, CircleGeometry, Clock, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
+  ACESFilmicToneMapping, CircleGeometry, Clock, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog,
   GridHelper, Group, HemisphereLight, LatheGeometry, type Material, Mesh, MeshStandardMaterial, Object3D, PCFSoftShadowMap,
-  PerspectiveCamera, PlaneGeometry, PMREMGenerator, PointLight, Quaternion, Scene, Sprite, SpriteMaterial, type Texture,
+  PerspectiveCamera, PlaneGeometry, PMREMGenerator, Quaternion, Scene, Sprite, type Texture,
   Vector2, Vector3, WebGLRenderer,
 } from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buttSlot } from './smokeBreak';
+import { BURNABLE, Cigarette, FILTER, type Materials, RADIUS, ROD, STUB, makeButt } from './Cigarette';
 import type { EnvironmentLighting } from './EnvironmentDeck';
 import { Smoke } from './Smoke';
+import { buttSlot } from './smokeBreak';
 import {
   ashBedTexture, ashTexture, brushedTexture, charTexture, emberTexture, filterEndTexture, filterTexture, glowTexture,
   paperTexture, smokeAtlas,
 } from './textures';
 
-/** Real king-size proportions, in cm. */
-const RADIUS = 0.39, FILTER = 2.7, ROD = 5.7;
-/** Paper left above the filter when it is finished. */
-const STUB = 0.8;
-const BURNABLE = ROD - STUB;
-const CHAR = 0.14, EMBER = 0.16;
 /** The ash bed's height and the bowl's inner radius at it. */
 const BED_Y = 0.61, BED_RADIUS = 4.6;
 const UP = new Vector3(0, 1, 0);
 /** Where the lit end starts, over the ashtray so its ash falls in, and the way the cigarette points at it. */
 const TIP = new Vector3(-0.8, 10.2, -1.6);
 const AXIS = new Vector3(-0.42, 0.3, -0.86).normalize();
-
-interface Materials {
-  filter: Material[];
-  paper: MeshStandardMaterial;
-  char: MeshStandardMaterial;
-  ember: MeshStandardMaterial;
-  ash: MeshStandardMaterial;
-  /** The blackened, crushed-out end of a butt. */
-  stubbed: MeshStandardMaterial;
-}
 
 interface Pose { position: Vector3; quaternion: Quaternion }
 const ease = (t: number) => t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
@@ -245,7 +232,7 @@ export class SmokeBreakScene {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     // Pull back on narrow screens so the cigarette and the tray both stay in frame.
-    const distance = Math.min(2, Math.max(1, 1 / this.camera.aspect));
+    const distance = Math.min(2.25, Math.max(1, 1.05 / this.camera.aspect));
     const look = new Vector3(0.4, 7.3, 0.5);
     this.camera.position.copy(look).add(new Vector3(4.5, 4.8, 19.5).multiplyScalar(distance));
     this.camera.lookAt(look);
@@ -361,85 +348,3 @@ export class SmokeBreakScene {
     });
   }
 }
-
-class Cigarette {
-  readonly group = new Group();
-  private readonly paper: Mesh;
-  private readonly char: Mesh;
-  private readonly ember: Mesh;
-  private readonly ash: Mesh;
-  private readonly halo: Sprite;
-  private readonly light = new PointLight(0xff6a20, 0, 0, 2);
-  private readonly embers: MeshStandardMaterial;
-
-  constructor(materials: Materials, glow: Texture) {
-    const filter = new Mesh(new CylinderGeometry(RADIUS, RADIUS, FILTER, 40).translate(0, FILTER / 2, 0), materials.filter);
-    this.paper = new Mesh(new CylinderGeometry(RADIUS, RADIUS, 1, 40, 1, true).translate(0, 0.5, 0), materials.paper);
-    this.paper.position.y = FILTER;
-    this.char = new Mesh(new CylinderGeometry(RADIUS * 1.004, RADIUS * 1.004, CHAR, 40, 1, true).translate(0, CHAR / 2, 0), materials.char);
-    this.ember = new Mesh(new CylinderGeometry(RADIUS * 0.9, RADIUS * 0.99, EMBER, 40).translate(0, EMBER / 2, 0), materials.ember);
-    this.ash = new Mesh(new CylinderGeometry(RADIUS * 0.8, RADIUS * 0.96, 1, 40).translate(0, 0.5, 0), materials.ash);
-    for (const mesh of [filter, this.paper, this.char, this.ember, this.ash]) mesh.castShadow = true;
-    this.embers = materials.ember;
-    this.halo = new Sprite(new SpriteMaterial({ map: glow, blending: AdditiveBlending, depthWrite: false, transparent: true }));
-    this.halo.renderOrder = 11;
-    this.group.add(filter, this.paper, this.char, this.ember, this.ash, this.halo, this.light);
-  }
-
-  /** Shortens the rod by `burned` cm and grows `ash` cm of ash past the ember. */
-  set(burned: number, ash: number) {
-    const rod = ROD - burned;
-    this.paper.scale.y = rod;
-    (this.paper.material as MeshStandardMaterial).map!.repeat.y = rod / ROD;
-    const end = FILTER + rod;
-    this.char.position.y = end - 0.02;
-    this.ember.position.y = end + CHAR - 0.06;
-    this.ash.position.y = end + CHAR + EMBER - 0.08;
-    this.ash.scale.y = Math.max(0.02, ash);
-    this.ash.visible = ash > 0.01;
-    const embers = this.ember.position.y + EMBER * 0.6;
-    this.halo.position.set(0, embers, 0);
-    this.light.position.set(0, embers + 0.3, 0);
-  }
-
-  setGlow(glow: number) {
-    const flicker = 0.92 + Math.random() * 0.08;
-    this.embers.emissiveIntensity = (1.4 + glow * 4) * flicker;
-    this.halo.scale.setScalar((1.1 + glow * 1.6) * flicker);
-    (this.halo.material as SpriteMaterial).opacity = 0.45 + glow * 0.5;
-    this.light.intensity = (3 + glow * 14) * flicker;
-  }
-
-  /** The burning end in world space, where the sidestream leaves. */
-  tip() {
-    const top = this.ash.visible ? this.ash.position.y + Math.min(this.ash.scale.y, 0.4) : this.ember.position.y + EMBER;
-    return this.group.localToWorld(new Vector3(0, top, 0));
-  }
-
-  ashCenter(length: number) {
-    return new Vector3(0, this.ash.position.y + length / 2, 0);
-  }
-}
-
-/** A stubbed-out butt: the filter and a crumpled, charred stub, in the cigarette's own frame. */
-function makeButt(materials: Materials) {
-  const butt = new Group();
-  const filter = new Mesh(new CylinderGeometry(RADIUS, RADIUS, FILTER, 32).translate(0, FILTER / 2, 0), materials.filter);
-  const paper = materials.paper.clone();
-  paper.map = materials.paper.map!.clone();
-  paper.map.repeat.y = STUB / ROD;
-  // Smoke-stained and scorched toward the burnt end.
-  paper.color.set(0xd2c3a2);
-  const stub = new Mesh(new CylinderGeometry(RADIUS * 0.93, RADIUS, STUB, 32, 1, true).translate(0, STUB / 2, 0), paper);
-  stub.position.y = FILTER;
-  stub.scale.set(1, 1, 0.82);
-  // Crushed out: a squashed, blackened end bent a little off the axis.
-  const crushed = new Mesh(new CylinderGeometry(RADIUS * 0.5, RADIUS * 0.93, 0.22, 24).translate(0, 0.11, 0), materials.stubbed);
-  crushed.position.y = FILTER + STUB - 0.02;
-  crushed.rotation.z = (Math.random() - 0.5) * 0.7;
-  crushed.scale.set(1.15, 1, 0.6);
-  for (const mesh of [filter, stub, crushed]) mesh.castShadow = mesh.receiveShadow = true;
-  butt.add(filter, stub, crushed);
-  return butt;
-}
-

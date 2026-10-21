@@ -11,17 +11,30 @@
     "start": "node server/index.js",
     "preview": "vite preview --host 127.0.0.1",
     "version:next": "node scripts/version.mjs",
+    "db:inspect": "node --no-warnings scripts/db-inspect.mjs",
+    "db:d1:init": "node --no-warnings scripts/db-inspect.mjs --d1-init",
+    "db:staging": "node --no-warnings scripts/db-inspect.mjs --d1-remote --staging",
+    "db:live": "node --no-warnings scripts/db-inspect.mjs --d1-remote",
+    "mobile:sync": "npm run build && cap sync",
+    "ios:open": "cap open ios",
+    "android:open": "cap open android",
     "test:unit": "vitest run src",
     "test:browser": "playwright test",
     "test": "npm run test:unit && npm run test:browser"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.3",
+    "@capacitor/preferences": "^8.0.1",
     "express": "^5.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@playwright/test": "^1.56.0",
     "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
@@ -37,6 +50,13 @@
   "knip": {
     "entry": [
       "server/worker.js"
+    ],
+    "ignoreBinaries": [
+      "doppler"
+    ],
+    "ignoreDependencies": [
+      "@capacitor/android",
+      "@capacitor/ios"
     ]
   },
   "engines": {

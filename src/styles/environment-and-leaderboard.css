@@ -1,0 +1,509 @@
+/* Environment backdrop, 4-spot filmstrip deck, break report stats, and global top-10 leaderboard styles. */
+/* ========================================================
+   Smoke Break Environment Backdrop & Filmstrip Deck
+   ======================================================== */
+
+.env-backdrop {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  transition: background-image 220ms ease-out;
+  filter: saturate(1.05) contrast(1.04);
+}
+
+.env-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 62%, rgba(10, 10, 12, 0.05) 0%, rgba(10, 10, 12, 0.55) 85%),
+    linear-gradient(180deg, rgba(10, 10, 12, 0.45) 0%, transparent 28%, transparent 72%, rgba(10, 10, 12, 0.65) 100%);
+}
+
+.env-deck {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: min(620px, calc(100% - 236px));
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+  z-index: 12;
+}
+.env-deck.is-collapsed {
+  width: auto;
+  max-width: calc(100% - 236px);
+  padding: 8px 12px;
+}
+.env-deck.is-open {
+  width: min(620px, calc(100% - 236px));
+  padding: 12px 14px;
+}
+.env-deck-popover {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--as-border-subtle);
+}
+.env-popover-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.env-deck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.env-deck-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.env-chip-code {
+  font: 700 10px var(--as-font-mono);
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-accent-muted);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  flex-shrink: 0;
+}
+.env-chip-name {
+  font: 700 13.5px var(--as-font-heading);
+  color: var(--as-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-deck-vibe {
+  font: 400 11px var(--as-font-mono);
+  color: var(--as-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-deck-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.env-collapse-btn {
+  min-height: 26px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  white-space: nowrap;
+}
+.env-deck-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.env-spot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  padding: 5px !important;
+  background: var(--as-bg-base) !important;
+  border: 1px solid var(--as-border-subtle) !important;
+  border-radius: var(--as-radius-md) !important;
+  gap: 6px;
+}
+.env-spot-card.active {
+  border-color: var(--as-accent-primary) !important;
+  background: var(--as-accent-muted) !important;
+  box-shadow: 0 0 16px var(--as-accent-glow);
+}
+.env-spot-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--as-radius-sm);
+  overflow: hidden;
+  background: var(--as-bg-base);
+}
+.env-spot-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.env-spot-kbd {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font: 600 9px var(--as-font-mono);
+  padding: 1px 5px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  color: var(--as-text-secondary);
+  border: 1px solid var(--as-border-strong);
+}
+.env-spot-unlock-tag {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font: 700 8px var(--as-font-mono);
+  letter-spacing: 0.05em;
+  padding: 2px 5px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+}
+.env-spot-unlock-tag.unlocked {
+  background: var(--as-status-success-bg);
+  color: var(--as-status-success);
+  border: 1px solid var(--as-status-success);
+}
+.env-spot-unlock-tag.locked {
+  background: var(--as-status-warning-bg);
+  color: var(--as-status-warning);
+  border: 1px solid var(--as-status-warning);
+}
+.env-spot-active-tag {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font: 700 8px var(--as-font-mono);
+  letter-spacing: 0.06em;
+  padding: 2px 5px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-accent-primary);
+  color: var(--as-accent-text);
+}
+.env-spot-body {
+  display: grid;
+  gap: 1px;
+  padding: 0 2px 2px;
+}
+.env-spot-body strong {
+  font-family: var(--as-font-heading);
+  font-size: 12px;
+  color: var(--as-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-spot-body span {
+  font-family: var(--as-font-mono);
+  font-size: 9.5px;
+  color: var(--as-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* HUD Callsign Badge, Career Tally & Post-Shift Global Leaderboard */
+.hud-command {
+  position: relative;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.hud-brand {
+  display: grid;
+  gap: 2px;
+}
+.hud-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.callsign-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  border-radius: var(--as-radius-pill);
+  font: 600 11px var(--as-font-mono);
+  color: var(--as-text-primary);
+}
+.callsign-edit-btn,
+.callsign-save-btn,
+.callsign-cancel-btn {
+  font: 600 10px var(--as-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-surface);
+  color: var(--as-text-secondary);
+  cursor: pointer;
+}
+.callsign-edit-btn:hover,
+.callsign-save-btn:hover {
+  border-color: var(--as-accent-primary);
+  color: var(--as-accent-primary);
+}
+.callsign-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.callsign-input {
+  width: 140px;
+  padding: 4px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-accent-primary);
+  background: var(--as-bg-base);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+}
+.callsign-error {
+  font: 500 10px var(--as-font-mono);
+  color: var(--as-status-error);
+}
+.smoke-tally-career {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--as-border-subtle);
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-text-secondary);
+}
+.smoke-result {
+  width: min(440px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  z-index: 25;
+}
+.break-report-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px;
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md);
+}
+.break-report-stats dt {
+  font: 600 9px var(--as-font-mono);
+  letter-spacing: 0.08em;
+  color: var(--as-text-muted);
+  margin-bottom: 4px;
+}
+.break-report-stats dd {
+  margin: 0;
+  font: 700 15px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+.unlock-banner {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-accent-muted);
+  border: 1px solid var(--as-accent-primary);
+  color: var(--as-accent-primary);
+  font: 700 11px var(--as-font-mono);
+  letter-spacing: 0.04em;
+}
+.leaderboard-panel {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: var(--as-radius-md);
+  text-align: left;
+}
+.leaderboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.leaderboard-meta {
+  font: 600 10px var(--as-font-mono);
+  color: var(--as-accent-primary);
+}
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-surface);
+  font: 500 11px var(--as-font-mono);
+}
+.leaderboard-rank {
+  color: var(--as-accent-primary);
+  font-weight: 700;
+}
+.leaderboard-callsign {
+  color: var(--as-text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderboard-env {
+  color: var(--as-text-muted);
+  font-size: 10px;
+}
+.leaderboard-score {
+  color: var(--as-text-secondary);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .env-deck-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .env-deck,
+  .env-deck.is-collapsed,
+  .env-deck.is-open {
+    left: 8px;
+    right: 8px;
+    bottom: 132px;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+  .env-deck.is-collapsed {
+    min-height: 44px;
+    align-items: center;
+  }
+  .env-collapse-btn,
+  .hud-panel button.env-phase-pill,
+  .env-phase-pill {
+    min-height: 44px !important;
+    min-width: 44px;
+  }
+  .env-deck-vibe {
+    display: none;
+  }
+  .env-deck.is-open .env-deck-popover {
+    max-height: 48dvh;
+    overflow-y: auto;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hud-command {
+    flex-wrap: nowrap;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .smoke-result {
+    padding: 16px;
+    width: calc(100% - 16px);
+    max-height: calc(100% - 16px);
+  }
+  .break-report-stats {
+    padding: 8px;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .leaderboard-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+  .leaderboard-env {
+    display: none;
+  }
+}
+
+.smoke-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.smoke-brief-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.smoke-drag-ratio-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--as-radius-pill);
+  font: 700 9.5px var(--as-font-mono);
+  letter-spacing: 0.06em;
+  background: var(--as-bg-elevated);
+  border: 1px solid var(--as-border-strong);
+  color: var(--as-text-secondary);
+}
+.smoke-drag-ratio-badge.ratio-8 {
+  border-color: var(--as-accent-primary);
+  background: var(--as-accent-muted);
+  color: var(--as-accent-primary);
+}
+.smoke-drag-ratio-badge.ratio-4 {
+  border-color: var(--as-status-warning);
+  background: var(--as-status-warning-bg);
+  color: var(--as-status-warning);
+}
+.smoke-promo-target-pill {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-status-warning);
+  background: var(--as-status-warning-bg);
+  color: var(--as-status-warning);
+  font: 700 10px var(--as-font-mono);
+  letter-spacing: 0.04em;
+}
+.smoke-hype-copy {
+  margin: 0 0 6px !important;
+  color: var(--as-accent-primary) !important;
+  font: 600 12px var(--as-font-body) !important;
+}
+.env-phase-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hud-panel button.env-phase-pill,
+.env-phase-pill {
+  min-height: 24px !important;
+  padding: 2px 7px !important;
+  font: 700 10px var(--as-font-mono) !important;
+}
+.hud-panel button.env-phase-pill.active,
+.env-phase-pill.active {
+  border-color: var(--as-accent-primary);
+  background: var(--as-accent-muted);
+  color: var(--as-accent-primary);
+}
+
