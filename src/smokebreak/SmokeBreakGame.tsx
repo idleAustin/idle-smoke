@@ -27,7 +27,7 @@ import {
   SmokeBreakLobby, type GameModeId, type LobbyStep,
 } from './SmokeBreakLobby';
 import { SmokeBreakScene } from './SmokeBreakScene';
-import { fetchSmokeSession, type SmokeSession } from './smokeSessionClient';
+import { fetchSmokeSession, pickFresherSmokeSession, type SmokeSession } from './smokeSessionClient';
 import { AccountSettingsModal } from './UserProfileMenu';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
@@ -73,6 +73,14 @@ export function SmokeBreakGame({
   const activeSmokeSession =
     controlledSmokeSession !== undefined ? controlledSmokeSession : localSmokeSession;
   const setActiveSmokeSession = onSmokeSessionChange ?? setLocalSmokeSession;
+  const activeSmokeSessionRef = useRef<SmokeSession | null>(activeSmokeSession);
+  activeSmokeSessionRef.current = activeSmokeSession;
+  const updateActiveSmokeSession = (next: SmokeSession | null) => {
+    const resolved =
+      next === null ? null : pickFresherSmokeSession(activeSmokeSessionRef.current, next);
+    activeSmokeSessionRef.current = resolved;
+    setActiveSmokeSession(resolved);
+  };
 
   const [countdownRemaining, setCountdownRemaining] = useState(0);
   const countdownStartedRef = useRef(false);
@@ -98,7 +106,7 @@ export function SmokeBreakGame({
       const { previousCallsign, profile: freshGuest, leaderboard: board } = await signOutPlayerSession();
       setProfile(freshGuest);
       setLeaderboard(board);
-      setActiveSmokeSession(null);
+      updateActiveSmokeSession(null);
       setIsQuickCardOpen(false);
       setIsSettingsModalOpen(false);
       setStatusBanner(`✓ Signed out of ${previousCallsign} on this device. Your cloud account remains intact.`);
@@ -117,7 +125,7 @@ export function SmokeBreakGame({
       const { deletedCallsign, profile: freshGuest, leaderboard: board } = await deletePlayerAccount();
       setProfile(freshGuest);
       setLeaderboard(board);
-      setActiveSmokeSession(null);
+      updateActiveSmokeSession(null);
       setIsQuickCardOpen(false);
       setIsSettingsModalOpen(false);
       setStatusBanner(`🗑️ Permanently deleted account ${deletedCallsign} and all associated shifts.`);
@@ -263,12 +271,19 @@ export function SmokeBreakGame({
     });
   }, [state.startedAt, env.id, gameMode, activeSmokeSession?.sessionId]);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const submittedRef = useRef(false);
   useEffect(() => {
     if (!done || submittedRef.current) return;
     submittedRef.current = true;
-    let active = true;
-    (async () => {
+    void (async () => {
       const startedShift = startedShiftPromiseRef.current ? await startedShiftPromiseRef.current : null;
       const result = await submitFinishedShift({
         shiftId: startedShift?.shiftId,
@@ -277,32 +292,42 @@ export function SmokeBreakGame({
         startedAt: startedShift?.startedAt ?? startedAtUnixRef.current ?? Math.floor(Date.now() / 1000),
         sessionId: gameMode === 'h2h' ? activeSmokeSession?.sessionId : undefined,
       });
-      if (!active) return;
+      if (!mountedRef.current) return;
       setShiftResult(result);
       setProfile(result.profile);
       setLeaderboard(result.leaderboard);
       if (result.smokeSession) {
-        setActiveSmokeSession(result.smokeSession);
+        updateActiveSmokeSession(result.smokeSession);
       }
     })();
-    return () => { active = false; };
   }, [done, env.id, pressOffsetsMs, gameMode, activeSmokeSession?.sessionId]);
 
+  const resolvedSmokeSession = pickFresherSmokeSession(activeSmokeSession, shiftResult?.smokeSession);
+  const activeSessionId = resolvedSmokeSession?.sessionId;
+  const isSessionCompleted = Boolean(
+    resolvedSmokeSession?.status === 'completed' &&
+      resolvedSmokeSession.participants.every(p => p.finished)
+  );
+
   useEffect(() => {
-    if (!done || gameMode !== 'h2h' || !activeSmokeSession || activeSmokeSession.status === 'completed') {
+    if (!done || gameMode !== 'h2h' || !activeSessionId || isSessionCompleted) {
       return;
     }
     let mounted = true;
-    const timer = setInterval(async () => {
-      const updated = await fetchSmokeSession(activeSmokeSession.sessionId);
+    const poll = async () => {
+      const updated = await fetchSmokeSession(activeSessionId);
       if (!mounted || !updated) return;
-      setActiveSmokeSession(updated);
+      updateActiveSmokeSession(updated);
+    };
+    void poll();
+    const timer = setInterval(() => {
+      void poll();
     }, 1000);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
-  }, [done, gameMode, activeSmokeSession]);
+  }, [done, gameMode, activeSessionId, isSessionCompleted]);
 
   useEffect(() => {
     try {
@@ -405,7 +430,7 @@ export function SmokeBreakGame({
         }}
         onOpenSettingsModal={() => { setIsQuickCardOpen(false); setAccountError(null); setIsSettingsModalOpen(true); }}
         onChangeMode={() => {
-          setActiveSmokeSession(null);
+          updateActiveSmokeSession(null);
           setLobbyStep('modes');
         }}
         onSignOut={() => void handleSignOut()}
@@ -450,7 +475,7 @@ export function SmokeBreakGame({
             unlockedEnvironments={reportUnlockedEnvironments}
             leaderboardEntries={leaderboard.entries}
             activeSmokeSession={activeSmokeSession}
-            onSmokeSessionChange={setActiveSmokeSession}
+            onSmokeSessionChange={updateActiveSmokeSession}
             statusBanner={statusBanner} onDismissBanner={() => setStatusBanner(null)}
             onSelectEnvironment={setEnvId}
             onSaveCallsign={async next => { setProfile(await updatePlayerCallsign(next)); }}
@@ -463,7 +488,7 @@ export function SmokeBreakGame({
             onCompleteLogin={() => setLobbyStep('modes')}
             onSelectMode={mode => {
               setGameMode(mode);
-              if (mode !== 'h2h') setActiveSmokeSession(null);
+              if (mode !== 'h2h') updateActiveSmokeSession(null);
               setLobbyStep(mode === 'campaign' ? 'map' : mode === 'h2h' ? 'h2h' : 'game');
             }}
             onSetStep={setLobbyStep}
@@ -492,10 +517,10 @@ export function SmokeBreakGame({
             lifetimeSmoked={reportLifetimeSmoked} bestSmoked={reportBestSmoked}
             newlyUnlockedEnvironments={reportNewlyUnlocked}
             profile={profile} leaderboardEntries={leaderboardEntries}
-            gameMode={gameMode} smokeSession={shiftResult?.smokeSession ?? activeSmokeSession}
+            gameMode={gameMode} smokeSession={resolvedSmokeSession}
             armed={armed} newShiftRef={newShift} onFinish={finish}
             onOpenModes={() => {
-              setActiveSmokeSession(null);
+              updateActiveSmokeSession(null);
               setLobbyStep('modes');
               finish();
             }}
