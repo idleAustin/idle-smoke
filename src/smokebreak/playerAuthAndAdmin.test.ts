@@ -643,4 +643,60 @@ describe('Player Authentication, OAuth, Account Deletion & Admin Taglines API', 
       db.close();
     }
   });
+
+  it('handles auth/login and admin/taglines in a Cloudflare Worker runtime where globalThis.process is undefined and options.env is {}', async () => {
+    const db = openSqliteDb(':memory:');
+    const store = createSqliteStore(db);
+    const origProcess = globalThis.process;
+    try {
+      (globalThis as Record<string, unknown>).process = undefined;
+
+      const regRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: 'test1',
+            password: 'password123',
+            mode: 'register',
+            platform: 'web',
+          }),
+        },
+        store,
+        { env: {} }
+      );
+      expect(regRes.status).toBe(200);
+
+      const emailLoginRes = await handleApiRequest(
+        {
+          method: 'POST',
+          pathname: '/api/v1/auth/login',
+          rawBody: JSON.stringify({
+            callsign: 'admin@example.com',
+            password: 'password123',
+            mode: 'login',
+            platform: 'web',
+          }),
+        },
+        store,
+        { env: { ADMIN_EMAILS: 'admin@example.com' } }
+      );
+      expect(emailLoginRes.status).toBe(401);
+
+      const adminRes = await handleApiRequest(
+        {
+          method: 'GET',
+          pathname: '/api/v1/admin/taglines',
+          adminPasscode: 'wrong',
+        },
+        store,
+        { env: {} }
+      );
+      expect(adminRes.status).toBe(403);
+    } finally {
+      globalThis.process = origProcess;
+      db.close();
+    }
+  });
 });
+

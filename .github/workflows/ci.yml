@@ -37,8 +37,18 @@ jobs:
       - name: Run Unit Tests
         run: npm run test:unit
 
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
       - name: Build Production Bundle
-        run: npm run build
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          if [ -n "$DOPPLER_TOKEN" ]; then
+            doppler --no-check-version run -- npm run build
+          else
+            npm run build
+          fi
 
       - name: Upload Production Dist
         uses: actions/upload-artifact@v4
@@ -76,7 +86,9 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN_STG || secrets.DOPPLER_TOKEN }}
         run: |
-          doppler run -- npx --yes wrangler deploy --env staging
+          doppler --no-check-version secrets get ADMIN_EMAILS --plain | doppler --no-check-version run -- npx --yes wrangler secret put ADMIN_EMAILS --env staging
+          doppler --no-check-version secrets get ADMIN_PASSCODE --plain | doppler --no-check-version run -- npx --yes wrangler secret put ADMIN_PASSCODE --env staging
+          doppler --no-check-version run -- npx --yes wrangler deploy --env staging --keep-vars
 
   deploy:
     name: Deploy to Cloudflare Edge
@@ -111,7 +123,9 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
-          doppler run -- npx --yes wrangler deploy
+          doppler --no-check-version secrets get ADMIN_EMAILS --plain | doppler --no-check-version run -- npx --yes wrangler secret put ADMIN_EMAILS
+          doppler --no-check-version secrets get ADMIN_PASSCODE --plain | doppler --no-check-version run -- npx --yes wrangler secret put ADMIN_PASSCODE
+          doppler --no-check-version run -- npx --yes wrangler deploy --keep-vars
 
       # Tags the version worked out from conventional commits and publishes GitHub release notes
       - name: Tag Release & Publish Notes

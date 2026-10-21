@@ -165,7 +165,7 @@ export async function handleApiRequest(req, store, options = {}) {
   const route = normalizeApiPathname(req.pathname);
   const nowUnix = options.nowUnix ?? Math.floor(Date.now() / 1000);
   const rawAdminEmails = String(
-    options.env?.ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? ''
+    options.env?.ADMIN_EMAILS ?? globalThis.process?.env?.ADMIN_EMAILS ?? ''
   );
 
   if (!checkRateLimit(req.clientIp, nowUnix * 1000)) {

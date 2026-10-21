@@ -522,7 +522,25 @@ describe('shiftClient frontend progression & leaderboard client', () => {
       db.close();
     }
   });
+
+  it('rejects with a clean Error message (not a JSON syntax error) when loginWithPassword receives a 500 HTML response', async () => {
+    resetShiftClientStateForTests();
+    const html500Fetch = async (): Promise<Response> =>
+      new Response('<!DOCTYPE html><title>Worker threw exception</title>', {
+        status: 500,
+        headers: { 'Content-Type': 'text/html; charset=UTF-8' },
+      });
+
+    let caughtError: Error | undefined;
+    try {
+      await loginWithPassword('test1', 'password123', html500Fetch, 'register');
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(caughtError?.message).toMatch(/Failed to sign in|Server error|500/i);
+    expect(caughtError?.message).not.toMatch(/Unexpected token '<'|is not valid JSON/i);
+  });
 });
-
-
 

@@ -34,7 +34,7 @@ export async function authenticatePlayer(authHeader, store) {
  */
 export async function authenticateAdmin(req, store, options = {}) {
   const expectedPasscode = String(
-    options.env?.ADMIN_PASSCODE ?? process.env.ADMIN_PASSCODE ?? ''
+    options.env?.ADMIN_PASSCODE ?? globalThis.process?.env?.ADMIN_PASSCODE ?? ''
   ).trim();
   const providedPasscode =
     typeof req.adminPasscode === 'string' ? req.adminPasscode.trim() : '';
@@ -45,7 +45,7 @@ export async function authenticateAdmin(req, store, options = {}) {
 
   const playerRow = await authenticatePlayer(req.authHeader, store);
   const rawAdminEmails = String(
-    options.env?.ADMIN_EMAILS ?? process.env.ADMIN_EMAILS ?? ''
+    options.env?.ADMIN_EMAILS ?? globalThis.process?.env?.ADMIN_EMAILS ?? ''
   );
   if (
     playerRow &&
@@ -231,7 +231,7 @@ export async function handlePlayerAndAuthRoutes(ctx) {
         };
       }
       const expectedAdminPasscode = String(
-        options.env?.ADMIN_PASSCODE ?? process.env.ADMIN_PASSCODE ?? ''
+        options.env?.ADMIN_PASSCODE ?? globalThis.process?.env?.ADMIN_PASSCODE ?? ''
       ).trim();
       if (!expectedAdminPasscode || passwordResult.password !== expectedAdminPasscode) {
         return { status: 401, body: { error: 'Invalid email or password' } };

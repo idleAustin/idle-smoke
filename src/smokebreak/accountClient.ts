@@ -20,6 +20,15 @@ import {
   type TaglineItem,
 } from './shiftStorage';
 
+async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
+  try {
+    const data = (await res.json()) as unknown;
+    return typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function updatePlayerCallsign(
   callsign: string,
   fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
@@ -38,9 +47,11 @@ export async function updatePlayerCallsign(
     body: JSON.stringify({ callsign }),
   });
 
-  const data = (await res.json()) as Record<string, unknown>;
+  const data = await parseJsonSafe(res);
   if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to update callsign');
+    throw new Error(
+      typeof data.error === 'string' ? data.error : `Failed to update callsign (HTTP ${res.status})`
+    );
   }
 
   const updated = normalizeProfile({ ...currentProfile, ...data });
@@ -73,9 +84,11 @@ export async function loginWithPassword(
     }),
   });
 
-  const data = (await res.json()) as Record<string, unknown>;
+  const data = await parseJsonSafe(res);
   if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to sign in');
+    throw new Error(
+      typeof data.error === 'string' ? data.error : `Failed to sign in (HTTP ${res.status})`
+    );
   }
 
   if (typeof data.playerToken === 'string' && data.playerToken.length > 0) {
@@ -113,9 +126,11 @@ export async function loginWithOAuth(
     }),
   });
 
-  const data = (await res.json()) as Record<string, unknown>;
+  const data = await parseJsonSafe(res);
   if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'OAuth sign-in failed');
+    throw new Error(
+      typeof data.error === 'string' ? data.error : `OAuth sign-in failed (HTTP ${res.status})`
+    );
   }
 
   if (typeof data.playerToken === 'string' && data.playerToken.length > 0) {
@@ -160,9 +175,11 @@ export async function deletePlayerAccount(
     },
   });
 
-  const data = (await res.json()) as Record<string, unknown>;
+  const data = await parseJsonSafe(res);
   if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'Failed to delete account');
+    throw new Error(
+      typeof data.error === 'string' ? data.error : `Failed to delete account (HTTP ${res.status})`
+    );
   }
 
   const deletedCallsign =
@@ -246,9 +263,12 @@ export async function fetchAdminTaglines(
       method: 'GET',
       headers: buildAdminHeaders(adminPasscode),
     });
-    const payload = (await res.json()) as Record<string, unknown>;
+    const payload = await parseJsonSafe(res);
     if (!res.ok) {
-      return { ok: false, error: String(payload.error ?? 'Admin authorization required') };
+      return {
+        ok: false,
+        error: String(payload.error ?? `Admin authorization required (HTTP ${res.status})`),
+      };
     }
     return {
       ok: true,
@@ -274,9 +294,12 @@ export async function addAdminTaglines(
       headers: buildAdminHeaders(adminPasscode),
       body: JSON.stringify({ jokeText }),
     });
-    const payload = (await res.json()) as Record<string, unknown>;
+    const payload = await parseJsonSafe(res);
     if (!res.ok) {
-      return { ok: false, error: String(payload.error ?? 'Failed to add taglines') };
+      return {
+        ok: false,
+        error: String(payload.error ?? `Failed to add taglines (HTTP ${res.status})`),
+      };
     }
     return {
       ok: true,
@@ -303,9 +326,12 @@ export async function updateAdminTagline(
       headers: buildAdminHeaders(adminPasscode),
       body: JSON.stringify(params),
     });
-    const payload = (await res.json()) as Record<string, unknown>;
+    const payload = await parseJsonSafe(res);
     if (!res.ok) {
-      return { ok: false, error: String(payload.error ?? 'Failed to update tagline') };
+      return {
+        ok: false,
+        error: String(payload.error ?? `Failed to update tagline (HTTP ${res.status})`),
+      };
     }
     return {
       ok: true,
@@ -331,9 +357,12 @@ export async function deleteAdminTagline(
       headers: buildAdminHeaders(adminPasscode),
       body: JSON.stringify({ id }),
     });
-    const payload = (await res.json()) as Record<string, unknown>;
+    const payload = await parseJsonSafe(res);
     if (!res.ok) {
-      return { ok: false, error: String(payload.error ?? 'Failed to delete tagline') };
+      return {
+        ok: false,
+        error: String(payload.error ?? `Failed to delete tagline (HTTP ${res.status})`),
+      };
     }
     return {
       ok: true,
