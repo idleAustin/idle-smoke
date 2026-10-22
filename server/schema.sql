@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS player_dim (
     best_smoked              INTEGER NOT NULL DEFAULT 0 CHECK (best_smoked >= 0),
     shifts_completed         INTEGER NOT NULL DEFAULT 0 CHECK (shifts_completed >= 0),
     promotion_rounds_cleared INTEGER NOT NULL DEFAULT 0 CHECK (promotion_rounds_cleared BETWEEN 0 AND 9),
+    avatar_config            TEXT,
     created_at               INTEGER NOT NULL,
     updated_at               INTEGER NOT NULL
 ) STRICT;
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS smoke_session_participant (
 ) STRICT;
 
 INSERT INTO app_config (key, value, updated_at)
-VALUES ('schema_version', '3', CAST(strftime('%s', 'now') AS INTEGER))
+VALUES ('schema_version', '4', CAST(strftime('%s', 'now') AS INTEGER))
 ON CONFLICT(key) DO UPDATE SET
     value = excluded.value,
     updated_at = excluded.updated_at;

@@ -21,7 +21,7 @@ async function fetchLeaderboard(fetchImpl: FetchLike): Promise<LeaderboardRespon
     if (res.ok) {
       const data = (await res.json()) as LeaderboardResponse;
       setCachedLeaderboard(data);
-      return data;
+      return getCachedLeaderboard();
     }
   } catch {
     // Return cached leaderboard when unreachable
@@ -333,8 +333,9 @@ export async function submitFinishedShift(
           (data.profile as Record<string, unknown>) ?? currentProfile
         );
         setCachedProfile(updatedProfile);
-        const leaderboard = (data.leaderboard as LeaderboardResponse) ?? getCachedLeaderboard();
-        setCachedLeaderboard(leaderboard);
+        const rawLeaderboard = (data.leaderboard as LeaderboardResponse) ?? getCachedLeaderboard();
+        setCachedLeaderboard(rawLeaderboard);
+        const leaderboard = getCachedLeaderboard();
         const newlyUnlocked = Array.isArray(data.newlyUnlockedEnvironments)
           ? (data.newlyUnlockedEnvironments as EnvironmentId[])
           : updatedProfile.unlockedEnvironments.filter(id => !unlockedBefore.includes(id));

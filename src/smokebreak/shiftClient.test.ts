@@ -5,6 +5,7 @@ import {
   deletePlayerAccount,
   loginWithPassword,
   signOutPlayerSession,
+  updatePlayerAvatarConfig,
   updatePlayerCallsign,
 } from './accountClient';
 import {
@@ -20,8 +21,12 @@ import {
 } from './shiftStorage';
 import { resolveEnvironmentImagePath } from './EnvironmentDeck';
 import { freshShiftSession, recordShiftDrag } from './smokeBreak';
+import { createSmokeSession, joinSmokeSessionByCode } from './smokeSessionClient';
 
-function createStoreFetch(store: ReturnType<typeof createSqliteStore>) {
+function createStoreFetch(
+  store: ReturnType<typeof createSqliteStore>,
+  env?: Record<string, unknown>
+) {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input.toString();
     const pathname = new URL(url, 'http://127.0.0.1:4173').pathname;
@@ -36,7 +41,7 @@ function createStoreFetch(store: ReturnType<typeof createSqliteStore>) {
         clientIp: '127.0.0.1',
       },
       store,
-      { nowUnix: 1760550000 }
+      { nowUnix: 1760550000, ...(env ? { env } : {}) }
     );
     return new Response(JSON.stringify(result.body), {
       status: result.status,
@@ -545,5 +550,120 @@ describe('shiftClient frontend progression & leaderboard client', () => {
     expect(caughtError?.message).toMatch(/Failed to sign in|Server error|500/i);
     expect(caughtError?.message).not.toMatch(/Unexpected token '<'|is not valid JSON/i);
   });
+
+  it('persists custom avatarConfig in SQLite across devices via loginWithPassword and exposes it to other players in leaderboard.entries and smokeSession.participants', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    const store = createSqliteStore(db);
+    const fetchMock = createStoreFetch(store);
+
+    try {
+      // Device 1: Register NEON-PUFF, save custom avatarConfig, finish a shift, and host a Smoke Session
+      await bootstrapPlayerSession(fetchMock);
+      const registered = await loginWithPassword('NEON-PUFF', 'secret-pass', fetchMock, 'register');
+      const customAvatar = {
+        skinIdx: 4,
+        headgearIdx: 5,
+        eyesIdx: 2,
+        beardIdx: 3,
+        smokeIdx: 2,
+        collarIdx: 1,
+        bgIdx: 4,
+      };
+
+      const updatedProfile = await updatePlayerAvatarConfig(customAvatar, fetchMock);
+      expect(updatedProfile.avatarConfig).toEqual(customAvatar);
+
+      const dbRow = db
+        .prepare('SELECT avatar_config FROM player_dim WHERE id = ?')
+        .get(registered.playerId) as { avatar_config: string | null };
+      expect(JSON.parse(dbRow.avatar_config ?? 'null')).toEqual(customAvatar);
+
+      const thirtySixDrags = Array.from({ length: 36 }, (_, i) => i * 200);
+      await submitFinishedShift(
+        { environmentId: 'alleyway', pressOffsetsMs: thirtySixDrags },
+        fetchMock
+      );
+      const hostedSession = await createSmokeSession('alleyway', fetchMock);
+      expect(hostedSession.participants[0]?.avatarConfig).toEqual(customAvatar);
+
+      // Device 2: Fresh session logs in as NEON-PUFF and receives persisted avatarConfig
+      resetShiftClientStateForTests();
+      const device2Login = await loginWithPassword('NEON-PUFF', 'secret-pass', fetchMock, 'login');
+      expect(device2Login.playerId).toBe(registered.playerId);
+      expect(device2Login.avatarConfig).toEqual(customAvatar);
+
+      // Another user (Player 2) fetches leaderboard and joins Smoke Session -> sees NEON-PUFF's avatarConfig
+      resetShiftClientStateForTests();
+      const player2Boot = await bootstrapPlayerSession(fetchMock);
+      expect(player2Boot.profile.playerId).not.toBe(registered.playerId);
+      const lbEntry = player2Boot.leaderboard.entries.find(e => e.callsign === 'NEON-PUFF');
+      expect(lbEntry?.avatarConfig).toEqual(customAvatar);
+
+      const joinedSession = await joinSmokeSessionByCode(hostedSession.code, fetchMock);
+      const hostParticipant = joinedSession.participants.find(p => p.callsign === 'NEON-PUFF');
+      expect(hostParticipant?.avatarConfig).toEqual(customAvatar);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rejects non-admin useAdminScorpion: true on PATCH /api/v1/players/me with 403 while allowing Admin accounts', async () => {
+    resetShiftClientStateForTests();
+    const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
+    const store = createSqliteStore(db);
+    const ephemeralPasscode = globalThis.crypto.randomUUID();
+    const ephemeralAdminEmail = `operator-${globalThis.crypto.randomUUID().slice(0, 8)}@example.test`;
+    const env = { ADMIN_EMAILS: ephemeralAdminEmail, ADMIN_PASSCODE: ephemeralPasscode };
+    const fetchMock = createStoreFetch(store, env);
+
+    try {
+      const { body: guestCreated } = await handleApiRequest(
+        { method: 'POST', pathname: '/api/v1/players', rawBody: '{}' },
+        store,
+        { env }
+      );
+      const guestToken = String((guestCreated as Record<string, unknown>).playerToken);
+
+      const scorpionConfig = {
+        skinIdx: 1,
+        headgearIdx: 2,
+        eyesIdx: 0,
+        beardIdx: 1,
+        smokeIdx: 0,
+        collarIdx: 2,
+        bgIdx: 1,
+        useAdminScorpion: true,
+      };
+
+      const nonAdminRes = await handleApiRequest(
+        {
+          method: 'PATCH',
+          pathname: '/api/v1/players/me',
+          authHeader: `Bearer ${guestToken}`,
+          rawBody: JSON.stringify({ avatarConfig: scorpionConfig }),
+        },
+        store,
+        { env }
+      );
+      expect(nonAdminRes.status).toBe(403);
+      expect(String((nonAdminRes.body as Record<string, unknown>).error)).toMatch(/Admin Scorpion/i);
+
+      // Sign in as Admin account and save useAdminScorpion: true
+      const adminProfile = await loginWithPassword(
+        ephemeralAdminEmail,
+        ephemeralPasscode,
+        fetchMock,
+        'login'
+      );
+      expect(adminProfile.isAdmin).toBe(true);
+
+      const savedAdmin = await updatePlayerAvatarConfig(scorpionConfig, fetchMock);
+      expect(savedAdmin.avatarConfig).toEqual(scorpionConfig);
+    } finally {
+      db.close();
+    }
+  });
 });
+
 

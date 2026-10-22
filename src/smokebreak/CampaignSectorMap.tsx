@@ -76,6 +76,7 @@ export function CampaignSectorMap({
   leaderboardEntries,
   onSelectEnvironment,
   onBackToModes,
+  onOpenScoreboard,
   onStartShift,
 }: {
   profile: PlayerProfile;
@@ -84,6 +85,7 @@ export function CampaignSectorMap({
   leaderboardEntries: readonly LeaderboardEntry[];
   onSelectEnvironment: (id: EnvironmentId) => void;
   onBackToModes: () => void;
+  onOpenScoreboard?: () => void;
   onStartShift: () => void;
 }) {
   const [selectedPhase, setSelectedPhase] = useState<CampaignPhaseId>(currentEnv.phase);
@@ -451,7 +453,18 @@ export function CampaignSectorMap({
               ) : (
                 <>
                   <div className="proto-mini-board">
-                    <span className="eyebrow">SECTOR LEADERBOARD TOP 3</span>
+                    <div className="proto-mini-board-head">
+                      <span className="eyebrow">SECTOR LEADERBOARD TOP 3</span>
+                      {onOpenScoreboard && (
+                        <button
+                          type="button"
+                          className="proto-link-btn"
+                          onClick={onOpenScoreboard}
+                        >
+                          Full Scoreboard →
+                        </button>
+                      )}
+                    </div>
                     <ol className="leaderboard-list">
                       {leaderboardEntries.slice(0, 3).map(entry => (
                         <li

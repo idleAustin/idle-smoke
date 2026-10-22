@@ -1,5 +1,7 @@
 // Client API helpers and normalizers for 2-digit code Smoke Sessions (create, join, poll, and start).
 
+import { parseAvatarConfig } from '../../server/storeQueries.js';
+import { type OperatorAvatarConfig } from './OperatorAvatar';
 import { ensureAuthenticatedPlayer } from './shiftClient';
 import { getStoredToken, hydrateNativeStorage, resolveApiPath, type FetchLike } from './shiftStorage';
 import { type EnvironmentId } from './smokeBreak';
@@ -10,6 +12,7 @@ interface SmokeSessionParticipant {
   rank: number;
   playerId: string;
   callsign: string;
+  avatarConfig?: OperatorAvatarConfig | null;
   isHost: boolean;
   joinedAt: number;
   finished: boolean;
@@ -70,6 +73,9 @@ export function normalizeSmokeSession(raw: unknown): SmokeSession | null {
       rank: Number(p.rank ?? idx + 1),
       playerId: String(p.playerId ?? ''),
       callsign: String(p.callsign ?? 'CREW'),
+      avatarConfig:
+        (parseAvatarConfig(p.avatarConfig ?? p.avatar_config) as OperatorAvatarConfig | null) ??
+        null,
       isHost: Boolean(p.isHost),
       joinedAt: Number(p.joinedAt ?? 0),
       finished: Boolean(p.finished),

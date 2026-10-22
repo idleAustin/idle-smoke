@@ -423,6 +423,7 @@ describe('SQLite Star Schema & DB Inspector', () => {
         {
           rank: 1,
           callsign: 'SHIFT-7788',
+          avatarConfig: null,
           smoked: 5,
           environmentId: 'restaurant',
           completedAt: 1700000045,
@@ -430,6 +431,7 @@ describe('SQLite Star Schema & DB Inspector', () => {
         {
           rank: 2,
           callsign: 'DOCK-BOSS',
+          avatarConfig: null,
           smoked: 4,
           environmentId: 'alleyway',
           completedAt: 1700000030,
@@ -437,6 +439,7 @@ describe('SQLite Star Schema & DB Inspector', () => {
         {
           rank: 3,
           callsign: 'SHIFT-7788',
+          avatarConfig: null,
           smoked: 2,
           environmentId: 'alleyway',
           completedAt: 1700000015,
@@ -632,7 +635,7 @@ describe('SQLite Star Schema & DB Inspector', () => {
       const versionRow = migratedDb
         .prepare("SELECT value FROM app_config WHERE key = 'schema_version'")
         .get() as { value: string } | undefined;
-      expect(versionRow?.value).toBe('3');
+      expect(versionRow?.value).toBe('4');
 
       const envCount = migratedDb
         .prepare('SELECT COUNT(*) AS count FROM environment_dim')

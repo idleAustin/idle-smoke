@@ -65,7 +65,15 @@
   color: var(--as-accent-primary);
   transform: none;
 }
-.proto-user-circle-svg { width: 19px; height: 19px; display: block; flex-shrink: 0; }
+.proto-user-circle-svg,
+.proto-user-circle-btn .operator-avatar-svg,
+.proto-user-circle-btn .operator-avatar-scorpion {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+}
 .proto-user-circle-dot {
   position: absolute;
   right: -1px;
@@ -89,6 +97,8 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  overflow: hidden;
+  padding: 0;
 }
 .proto-mobbin-user-meta { display: grid; gap: 2px; min-width: 0; }
 .proto-mobbin-name-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -116,7 +126,8 @@
 }
 .proto-mobbin-callsign-trigger:hover strong { color: var(--as-accent-primary); }
 .proto-mobbin-edit-hint {
-  font-size: 11px;
+  font-size: 9.5px;
+  font-family: var(--as-font-mono);
   color: var(--as-text-muted);
   opacity: 0.65;
   transition: opacity 140ms ease, color 140ms ease;
@@ -191,6 +202,8 @@
   font: 800 15px var(--as-font-mono);
   display: grid;
   place-items: center;
+  overflow: hidden;
+  padding: 0;
 }
 .proto-discord-identity { display: grid; gap: 2px; }
 .proto-discord-identity strong { font: 800 15px var(--as-font-mono); color: var(--as-text-primary); }

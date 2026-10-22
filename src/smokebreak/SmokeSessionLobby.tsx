@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getEnvironment, type EnvironmentId, type SmokeEnvironment } from './EnvironmentDeck';
+import { OperatorAvatar } from './OperatorAvatar';
 import { type PlayerProfile } from './shiftStorage';
 import {
   createSmokeSession,
@@ -241,7 +242,22 @@ export function SmokeSessionLobby({
                 {activeSession.participants.map((participant, idx) => (
                   <li key={`${participant.playerId}-${idx}`} className="leaderboard-row">
                     <span className="leaderboard-rank">#{idx + 1}</span>
-                    <span className="leaderboard-callsign">{participant.callsign}</span>
+                    <span className="leaderboard-callsign">
+                      <span className="leaderboard-avatar">
+                        <OperatorAvatar
+                          callsign={participant.callsign}
+                          isAdmin={
+                            participant.callsign === profile.callsign ? profile.isAdmin : false
+                          }
+                          avatarConfig={
+                            participant.callsign === profile.callsign
+                              ? (participant.avatarConfig ?? profile.avatarConfig)
+                              : participant.avatarConfig
+                          }
+                        />
+                      </span>
+                      {participant.callsign}
+                    </span>
                     <span className="leaderboard-env">
                       {participant.isHost ? 'SESSION CREATOR' : 'READY'}
                     </span>

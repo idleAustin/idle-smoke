@@ -3,6 +3,7 @@
 import { type RefObject } from 'react';
 import { formatWhereTagline } from './accountClient';
 import { type EnvironmentId, getEnvironment, type SmokeEnvironment } from './EnvironmentDeck';
+import { OperatorAvatar } from './OperatorAvatar';
 import { type LeaderboardEntry, type PlayerProfile } from './shiftStorage';
 import {
   BREAK_MS,
@@ -42,6 +43,7 @@ export function SmokeCommandHeader({
   onToggleQuickCard,
   onOpenSettingsModal,
   onChangeMode,
+  onOpenScoreboard,
   onSignOut,
 }: {
   env: SmokeEnvironment;
@@ -56,6 +58,7 @@ export function SmokeCommandHeader({
   onToggleQuickCard: () => void;
   onOpenSettingsModal: () => void;
   onChangeMode: () => void;
+  onOpenScoreboard?: () => void;
   onSignOut: () => void;
 }) {
   return (
@@ -71,9 +74,29 @@ export function SmokeCommandHeader({
       </div>
       <div className="hud-right-group">
         {showChangeModeAction && (
-          <button type="button" className="hud-nav-back-btn" onClick={onChangeMode}>
-            ← Modes / Map
-          </button>
+          <>
+            <button type="button" className="hud-nav-back-btn" onClick={onChangeMode}>
+              ← Modes / Map
+            </button>
+            {onOpenScoreboard && (
+              <button
+                type="button"
+                className="hud-nav-back-btn"
+                onClick={onOpenScoreboard}
+                aria-label="Open Scoreboard"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                  <path d="M4 22h16" />
+                  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                </svg>
+                <span>Scoreboard</span>
+              </button>
+            )}
+          </>
         )}
         <div
           className={`shift-clock ${done ? 'complete' : 'running'}`}
@@ -91,6 +114,7 @@ export function SmokeCommandHeader({
           onToggleQuickCard={onToggleQuickCard}
           onOpenSettingsModal={onOpenSettingsModal}
           onChangeMode={onChangeMode}
+          onOpenScoreboard={onOpenScoreboard}
           onSignOut={onSignOut}
         />
       </div>
@@ -236,6 +260,7 @@ export function BreakReportDialog({
   newShiftRef,
   onFinish,
   onOpenModes,
+  onOpenScoreboard,
 }: {
   verifiedEnvironment: SmokeEnvironment;
   smoked: number;
@@ -250,6 +275,7 @@ export function BreakReportDialog({
   newShiftRef: RefObject<HTMLButtonElement>;
   onFinish(): void;
   onOpenModes?(): void;
+  onOpenScoreboard?(): void;
 }) {
   const plural = (n: number) => `${n} ${n === 1 ? 'cigarette' : 'cigarettes'}`;
   const sessionBanner =
@@ -303,7 +329,20 @@ export function BreakReportDialog({
             {smokeSession.participants.map(p => (
               <li key={p.playerId} className="leaderboard-row">
                 <span className="leaderboard-rank">#{p.rank}</span>
-                <span className="leaderboard-callsign">{p.callsign}</span>
+                <span className="leaderboard-callsign">
+                  <span className="leaderboard-avatar">
+                    <OperatorAvatar
+                      callsign={p.callsign}
+                      isAdmin={p.callsign === profile.callsign ? profile.isAdmin : false}
+                      avatarConfig={
+                        p.callsign === profile.callsign
+                          ? (p.avatarConfig ?? profile.avatarConfig)
+                          : p.avatarConfig
+                      }
+                    />
+                  </span>
+                  {p.callsign}
+                </span>
                 <span className="leaderboard-env">
                   {p.finished ? `${p.tapCount ?? 0} drags` : 'SMOKING…'}
                 </span>
@@ -324,7 +363,20 @@ export function BreakReportDialog({
           {leaderboardEntries.slice(0, 10).map(entry => (
             <li key={`${entry.rank}-${entry.callsign}-${entry.completedAt}`} className="leaderboard-row">
               <span className="leaderboard-rank">#{entry.rank}</span>
-              <span className="leaderboard-callsign">{entry.callsign}</span>
+              <span className="leaderboard-callsign">
+                <span className="leaderboard-avatar">
+                  <OperatorAvatar
+                    callsign={entry.callsign}
+                    isAdmin={entry.callsign === profile.callsign ? profile.isAdmin : false}
+                    avatarConfig={
+                      entry.callsign === profile.callsign
+                        ? (entry.avatarConfig ?? profile.avatarConfig)
+                        : entry.avatarConfig
+                    }
+                  />
+                </span>
+                {entry.callsign}
+              </span>
               <span className="leaderboard-env">{getEnvironment(entry.environmentId).name}</span>
               <span className="leaderboard-score">{entry.smoked} butts</span>
             </li>
@@ -335,6 +387,16 @@ export function BreakReportDialog({
         <button type="button" className="ship" ref={newShiftRef} disabled={!armed} onClick={onFinish}>
           Start new shift
         </button>
+        {onOpenScoreboard && (
+          <button
+            type="button"
+            className="callsign-edit-btn"
+            disabled={!armed}
+            onClick={onOpenScoreboard}
+          >
+            Full Scoreboard
+          </button>
+        )}
         {onOpenModes && (
           <button
             type="button"

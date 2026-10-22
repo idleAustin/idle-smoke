@@ -5,13 +5,22 @@
 }
 
 .proto-chatgpt-modal {
-  width: min(680px, 100%);
+  width: min(920px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   padding: 0;
   overflow: hidden;
-  background: rgba(14, 15, 19, 0.99);
+  background: var(--as-bg-surface);
   border: 1px solid var(--as-border-strong);
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.88);
   display: grid;
+}
+
+.operator-avatar-svg,
+.operator-avatar-scorpion {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .proto-chatgpt-head {
@@ -29,13 +38,13 @@
 
 .proto-chatgpt-body {
   display: grid;
-  grid-template-columns: 195px 1fr;
-  min-height: 270px;
+  grid-template-columns: 185px minmax(0, 1fr);
+  min-height: 320px;
 }
 
 .proto-chatgpt-nav {
   padding: 12px;
-  background: rgba(8, 9, 12, 0.7);
+  background: var(--as-bg-base);
   border-right: 1px solid var(--as-border-subtle);
   display: flex;
   flex-direction: column;
@@ -68,18 +77,20 @@
 
 .hud-panel button.proto-chatgpt-tab.active,
 .proto-chatgpt-tab.active {
-  background: rgba(132, 204, 22, 0.14);
+  background: var(--as-accent-muted);
   border-color: var(--as-accent-primary);
   color: var(--as-text-primary);
 }
 
 .proto-chatgpt-pane {
   padding: 18px 20px;
+  min-width: 0;
 }
 
 .proto-chatgpt-section {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .proto-chatgpt-row {
@@ -94,8 +105,8 @@
 }
 
 .proto-chatgpt-row.danger-box {
-  border-color: rgba(244, 63, 94, 0.45);
-  background: rgba(244, 63, 94, 0.06);
+  border-color: var(--as-status-error);
+  background: var(--as-status-error-bg);
 }
 
 .proto-chatgpt-row strong {
@@ -147,6 +158,12 @@
   color: var(--as-accent-primary);
 }
 
+.proto-acct-btn-secondary.active-scorpion {
+  border-color: var(--as-status-warning);
+  color: var(--as-status-warning);
+  background: var(--as-status-warning-bg);
+}
+
 .proto-acct-btn-secondary.full,
 .proto-acct-open-profile-btn.full,
 .proto-acct-btn-danger-outline.full,
@@ -159,9 +176,9 @@
 .proto-acct-btn-danger-outline {
   padding: 7px 12px;
   border-radius: var(--as-radius-sm);
-  border: 1px solid rgba(244, 63, 94, 0.65);
-  background: rgba(244, 63, 94, 0.12);
-  color: #fda4af;
+  border: 1px solid var(--as-status-error);
+  background: var(--as-status-error-bg);
+  color: var(--as-status-error);
   font: 600 11px var(--as-font-mono);
   cursor: pointer;
   white-space: nowrap;
@@ -169,29 +186,21 @@
 
 .hud-panel button.proto-acct-btn-danger-outline:hover,
 .proto-acct-btn-danger-outline:hover {
-  border-color: #f43f5e;
-  color: #fecdd3;
-  box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+  border-color: var(--as-status-error);
+  color: var(--as-text-primary);
+  box-shadow: 0 0 12px var(--as-status-error-bg);
 }
 
 .hud-panel button.proto-acct-btn-danger-solid,
 .proto-acct-btn-danger-solid {
   padding: 9px 14px;
   border-radius: var(--as-radius-sm);
-  border: 1px solid #f43f5e;
-  background: #e11d48;
-  color: #fff;
+  border: 1px solid var(--as-status-error);
+  background: var(--as-status-error);
+  color: var(--as-text-primary);
   font: 700 11.5px var(--as-font-mono);
   cursor: pointer;
   white-space: nowrap;
-}
-
-.hud-panel button.proto-acct-btn-danger-solid:hover:not(:disabled),
-.proto-acct-btn-danger-solid:hover:not(:disabled) {
-  background: #f43f5e;
-  border-color: #fb7185;
-  color: #fff;
-  box-shadow: 0 0 14px rgba(244, 63, 94, 0.35);
 }
 
 .hud-panel button.proto-acct-btn-danger-solid:disabled,
@@ -203,15 +212,15 @@
 .proto-acct-danger-inline {
   padding: 12px;
   border-radius: var(--as-radius-sm);
-  border: 1px solid rgba(244, 63, 94, 0.6);
-  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid var(--as-status-error);
+  background: var(--as-status-error-bg);
   display: grid;
   gap: 10px;
 }
 
 .proto-acct-danger-title {
   font: 700 10px var(--as-font-mono);
-  color: #fda4af;
+  color: var(--as-status-error);
   letter-spacing: 0.06em;
 }
 
@@ -229,13 +238,13 @@
 }
 
 .danger-text {
-  color: #fb7185 !important;
+  color: var(--as-status-error) !important;
 }
 
 .admin-notice {
   padding: 8px 12px;
   border-radius: var(--as-radius-sm);
-  background: rgba(132, 204, 22, 0.14);
+  background: var(--as-accent-muted);
   border: 1px solid var(--as-accent-primary);
   color: var(--as-accent-primary);
   font: 600 11px var(--as-font-mono);
@@ -260,20 +269,9 @@
   border: 1px solid var(--as-border-subtle);
 }
 
-.admin-add-form label {
-  display: grid;
-  gap: 3px;
-}
-
-.admin-add-form strong {
-  font: 700 12px var(--as-font-mono);
-  color: var(--as-text-primary);
-}
-
-.admin-add-form small {
-  font-size: 11px;
-  color: var(--as-text-secondary);
-}
+.admin-add-form label { display: grid; gap: 3px; }
+.admin-add-form strong { font: 700 12px var(--as-font-mono); color: var(--as-text-primary); }
+.admin-add-form small { font-size: 11px; color: var(--as-text-secondary); }
 
 .admin-joke-textarea {
   width: 100%;
@@ -281,16 +279,13 @@
   padding: 9px 10px;
   border-radius: var(--as-radius-sm);
   border: 1px solid var(--as-border-strong);
-  background: #090a0d;
+  background: var(--as-bg-base);
   color: var(--as-text-primary);
   font: 500 11.5px/1.45 var(--as-font-mono);
   resize: vertical;
 }
 
-.admin-add-actions {
-  display: flex;
-  justify-content: flex-end;
-}
+.admin-add-actions { display: flex; justify-content: flex-end; }
 
 .admin-joke-list {
   display: grid;
@@ -311,16 +306,14 @@
   border: 1px solid var(--as-border-subtle);
 }
 
-.admin-joke-row.is-inactive {
-  opacity: 0.55;
-}
+.admin-joke-row.is-inactive { opacity: 0.55; }
 
 .admin-joke-id {
   font: 700 10.5px var(--as-font-mono);
   color: var(--as-accent-primary);
   padding: 2px 6px;
   border-radius: var(--as-radius-sm);
-  background: rgba(132, 204, 22, 0.12);
+  background: var(--as-accent-muted);
 }
 
 .admin-joke-text {
@@ -329,20 +322,76 @@
   min-width: 0;
 }
 
-.admin-joke-btns {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.admin-joke-btns { display: flex; align-items: center; gap: 6px; }
+
+/* --- Locker Mirror & 6-Slot Trait Workshop --- */
+.proto-prof-var-a {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+.proto-prof-locker-mirror {
+  padding: 14px 12px;
+  border-radius: var(--as-radius-md);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-strong);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.proto-prof-avatar-stage {
+  width: 88px;
+  height: 88px;
+  border-radius: var(--as-radius-md);
+  border: 2px solid var(--as-accent-primary);
+  box-shadow: 0 0 18px var(--as-accent-glow);
+  overflow: hidden;
+  background: var(--as-bg-elevated);
+}
+.proto-prof-scorpion-tag {
+  padding: 2px 7px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-status-warning-bg);
+  border: 1px solid var(--as-status-warning);
+  color: var(--as-status-warning);
+  font: 700 9px var(--as-font-mono);
+  letter-spacing: 0.05em;
+}
+.proto-prof-seed-tag { font: 600 9.5px var(--as-font-mono); color: var(--as-text-secondary); }
+.proto-prof-mirror-btns { display: grid; width: 100%; gap: 6px; }
+.proto-prof-workshop-col { display: grid; gap: 12px; min-width: 0; }
+.proto-prof-trait-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--as-radius-sm);
+  background: var(--as-bg-base);
+  border: 1px solid var(--as-border-subtle);
+  min-width: 0;
+}
+.proto-prof-trait-slot { display: grid; gap: 4px; min-width: 0; }
+.proto-prof-trait-slot span { font: 600 9.5px var(--as-font-mono); color: var(--as-text-muted); text-transform: uppercase; }
+.proto-prof-trait-slot select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-border-strong);
+  background: var(--as-bg-elevated);
+  color: var(--as-text-primary);
+  font: 600 11px var(--as-font-mono);
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 680px) {
-  .proto-chatgpt-body {
-    grid-template-columns: 1fr;
-  }
-
-  .proto-chatgpt-nav {
-    flex-direction: row;
-    border-right: none;
-    border-bottom: 1px solid var(--as-border-subtle);
-  }
+  .proto-chatgpt-body,
+  .proto-prof-var-a,
+  .proto-prof-trait-grid { grid-template-columns: 1fr; }
+  .proto-chatgpt-nav { flex-direction: row; border-right: none; border-bottom: 1px solid var(--as-border-subtle); }
 }

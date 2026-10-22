@@ -360,11 +360,25 @@
   font-weight: 700;
 }
 .leaderboard-callsign {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--as-text-primary);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.leaderboard-avatar {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--as-border-strong);
+  display: inline-flex;
+  flex-shrink: 0;
 }
 .leaderboard-env {
   color: var(--as-text-muted);

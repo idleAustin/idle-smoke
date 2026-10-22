@@ -244,4 +244,55 @@ it('unlocks all 12 environments, Phase 3, and Chairman rank in normalizeProfile 
   expect(projected.smokedByEnvironment?.['penthouse-helipad']).toBe(1);
 });
 
+it('exposes ScoreboardScreen scope filters, drag pace telemetry, and URL query detection', async () => {
+  const {
+    SCOREBOARD_SCOPES,
+    shouldOpenScoreboardFromUrl,
+    estimateShiftDrags,
+    formatShiftDragPace,
+  } = await import('./ScoreboardScreen');
+
+  expect(SCOREBOARD_SCOPES.map(s => s.id)).toEqual(['ALL', 'P1', 'P2', 'P3', 'SESSION']);
+  expect(shouldOpenScoreboardFromUrl()).toBe(false);
+  expect(estimateShiftDrags(0)).toBe(0);
+  expect(estimateShiftDrags(1)).toBeGreaterThan(0);
+  expect(formatShiftDragPace(3)).toMatch(/^\d+\.\d drags\/s$/);
+});
+
+it('derives deterministic smooth-vector Nice Avatar OperatorAvatar traits and guards Admin Scorpion emblem', async () => {
+  const {
+    deriveAvatarTraits,
+    getSavedAvatarTraits,
+    saveAvatarTraits,
+    HEADGEAR_OPTIONS,
+    EYES_OPTIONS,
+    BEARD_OPTIONS,
+    SMOKE_PROP_OPTIONS,
+  } = await import('./OperatorAvatar');
+  const { shouldOpenProfilePrototypeFromUrl } = await import('./UserProfilePrototype');
+
+  const first = deriveAvatarTraits('ASH-KING-01');
+  const second = deriveAvatarTraits('ash-king-01');
+  expect(first).toEqual(second);
+  expect(first.headgearIdx).toBeLessThan(HEADGEAR_OPTIONS.length);
+  expect(first.smokeIdx).toBeLessThan(SMOKE_PROP_OPTIONS.length);
+  expect(HEADGEAR_OPTIONS.map(o => o.id)).toEqual(['waves', 'buns', 'bob', 'halo', 'quiff', 'beanie', 'hardhat']);
+  expect(EYES_OPTIONS.map(o => o.id)).toEqual(['lashes', 'relaxed', 'roundshades', 'cateye', 'heavylids']);
+  expect(BEARD_OPTIONS.map(o => o.id)).toEqual(['hoops', 'freckles', 'clean', 'studs', 'stubble', 'beard']);
+
+  // Curated leaderboard callsigns resolve to distinct feminine/masculine/fluid combinations
+  expect(deriveAvatarTraits('MENTHOL-88')).not.toEqual(deriveAvatarTraits('ASH-KING'));
+
+  // Regular non-admin users never get useAdminScorpion=true
+  saveAvatarTraits('GUEST-OP-01', { headgearIdx: 2, smokeIdx: 3 }, true);
+  expect(getSavedAvatarTraits('GUEST-OP-01', false)).toMatchObject({
+    useAdminScorpion: false,
+    isCustomized: true,
+  });
+  // Admins default to or honour useAdminScorpion
+  expect(getSavedAvatarTraits('ADMIN-OP-01', true).useAdminScorpion).toBe(true);
+  expect(shouldOpenProfilePrototypeFromUrl()).toBe(false);
+});
+
+
 
