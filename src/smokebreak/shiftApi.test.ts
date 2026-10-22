@@ -109,6 +109,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
         playerId: created.playerId,
         callsign: created.callsign,
         platform: 'ios',
+        avatarConfig: null,
         lifetimeSmoked: 0,
         bestSmoked: 0,
         shiftsCompleted: 0,
@@ -567,7 +568,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       });
       expect(lb.entries).toHaveLength(1);
       expect(Object.keys(lb.entries[0]).sort()).toEqual(
-        ['callsign', 'completedAt', 'environmentId', 'rank', 'smoked'].sort()
+        ['avatarConfig', 'callsign', 'completedAt', 'environmentId', 'rank', 'smoked'].sort()
       );
       expect(lb.entries[0]).toMatchObject({
         rank: 1,

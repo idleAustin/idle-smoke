@@ -10,11 +10,16 @@ import {
   getEnvironment,
 } from './EnvironmentDeck';
 import { LoginScreen } from './LobbyLoginScreen';
-import { type LeaderboardEntry, type PlayerProfile } from './shiftStorage';
+import { ScoreboardScreen } from './ScoreboardScreen';
+import {
+  type LeaderboardEntry,
+  type LeaderboardResponse,
+  type PlayerProfile,
+} from './shiftStorage';
 import { type SmokeSession } from './smokeSessionClient';
 import { SmokeSessionLobby } from './SmokeSessionLobby';
 
-export type LobbyStep = 'login' | 'modes' | 'map' | 'h2h' | 'game';
+export type LobbyStep = 'login' | 'modes' | 'map' | 'h2h' | 'scoreboard' | 'game';
 export type GameModeId = 'campaign' | 'h2h' | 'sandbox';
 
 export interface SmokeBreakLobbyProps {
@@ -23,6 +28,7 @@ export interface SmokeBreakLobbyProps {
   currentEnv: SmokeEnvironment;
   unlockedEnvironments: readonly EnvironmentId[];
   leaderboardEntries: readonly LeaderboardEntry[];
+  leaderboard?: LeaderboardResponse;
   activeSmokeSession: SmokeSession | null;
   onSmokeSessionChange: (session: SmokeSession | null) => void;
   onSelectEnvironment: (id: EnvironmentId) => void;
@@ -51,12 +57,14 @@ function GameModeDeck({
   unlockedEnvironments,
   onSelectEnvironment,
   onSelectMode,
+  onOpenScoreboard,
 }: {
   profile: PlayerProfile;
   currentEnv: SmokeEnvironment;
   unlockedEnvironments: readonly EnvironmentId[];
   onSelectEnvironment: (id: EnvironmentId) => void;
   onSelectMode: (mode: GameModeId) => void;
+  onOpenScoreboard: () => void;
 }) {
   const [sandboxPhase, setSandboxPhase] = useState<CampaignPhaseId>(currentEnv.phase);
 
@@ -80,11 +88,20 @@ function GameModeDeck({
             <span className="eyebrow">GAME MODES · PRE-SHIFT BRIEFING</span>
             <h2>Select How You Want to Smoke</h2>
           </div>
-          <div className="proto-map-user-pill">
-            <span className="status-dot" />
-            <span>{profile.callsign}</span>
-            <small>· {profile.lifetimeSmoked} butts</small>
-            <small className="proto-sync-tag">· {unlockedEnvironments.length}/12 Spots</small>
+          <div className="proto-map-topbar-actions">
+            <button
+              type="button"
+              className="proto-nav-back-btn proto-sb-open-btn"
+              onClick={onOpenScoreboard}
+            >
+              Scoreboard &amp; Rankings →
+            </button>
+            <div className="proto-map-user-pill">
+              <span className="status-dot" />
+              <span>{profile.callsign}</span>
+              <small>· {profile.lifetimeSmoked} butts</small>
+              <small className="proto-sync-tag">· {unlockedEnvironments.length}/12 Spots</small>
+            </div>
           </div>
         </header>
 
@@ -231,6 +248,32 @@ export function SmokeBreakLobby(props: SmokeBreakLobbyProps) {
         unlockedEnvironments={props.unlockedEnvironments}
         onSelectEnvironment={props.onSelectEnvironment}
         onSelectMode={props.onSelectMode}
+        onOpenScoreboard={() => props.onSetStep('scoreboard')}
+      />
+    );
+  }
+
+  if (props.step === 'scoreboard') {
+    const resolvedBoard: LeaderboardResponse = props.leaderboard ?? {
+      entries: [...props.leaderboardEntries],
+      stats: {
+        totalPlayers: props.leaderboardEntries.length,
+        totalShifts: props.profile.shiftsCompleted,
+        totalSmoked: props.profile.lifetimeSmoked,
+      },
+    };
+    return (
+      <ScoreboardScreen
+        leaderboard={resolvedBoard}
+        profile={props.profile}
+        unlockedEnvironments={props.unlockedEnvironments}
+        activeSmokeSession={props.activeSmokeSession}
+        onBackToModes={() => props.onSetStep('modes')}
+        onDeployToSector={envId => {
+          props.onSelectEnvironment(envId);
+          props.onStartShift();
+        }}
+        onOpenSmokeSession={() => props.onSelectMode('h2h')}
       />
     );
   }
@@ -260,6 +303,7 @@ export function SmokeBreakLobby(props: SmokeBreakLobbyProps) {
       leaderboardEntries={props.leaderboardEntries}
       onSelectEnvironment={props.onSelectEnvironment}
       onBackToModes={() => props.onSetStep('modes')}
+      onOpenScoreboard={() => props.onSetStep('scoreboard')}
       onStartShift={props.onStartShift}
     />
   );

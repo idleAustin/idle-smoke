@@ -13,7 +13,7 @@ import {
   validateLoginIdentifier,
   validatePassword,
 } from './shiftVerifier.js';
-import { formatPlayerProfile, isEmailInAdminList } from './storeQueries.js';
+import { formatPlayerProfile, isEmailInAdminList, parseAvatarConfig } from './storeQueries.js';
 
 /**
  * @param {string | null | undefined} authHeader
@@ -189,20 +189,57 @@ export async function handlePlayerAndAuthRoutes(ctx) {
     const playerRow = await authenticatePlayer(req.authHeader, store);
     if (!playerRow) return { status: 401, body: { error: 'Valid Bearer playerToken required' } };
 
-    const callsignResult = validateCallsign(body.callsign);
-    if (!callsignResult.ok) return { status: 400, body: { error: callsignResult.error } };
-
-    const normalizedCallsign = callsignResult.callsign.toUpperCase();
-    const existingIdentity = await store.getAuthIdentity('password', normalizedCallsign);
-    if (existingIdentity && String(existingIdentity.player_id) !== String(playerRow.id)) {
-      return { status: 409, body: { error: 'Callsign is already registered by another player' } };
+    if (body.callsign === undefined && body.avatarConfig === undefined) {
+      const callsignResult = validateCallsign(body.callsign);
+      if (!callsignResult.ok) return { status: 400, body: { error: callsignResult.error } };
     }
 
-    const updatedRow = await store.updatePlayerCallsign(
-      String(playerRow.id),
-      callsignResult.callsign,
-      nowUnix
-    );
+    let updatedRow = playerRow;
+
+    if (body.callsign !== undefined) {
+      const callsignResult = validateCallsign(body.callsign);
+      if (!callsignResult.ok) return { status: 400, body: { error: callsignResult.error } };
+
+      const normalizedCallsign = callsignResult.callsign.toUpperCase();
+      const existingIdentity = await store.getAuthIdentity('password', normalizedCallsign);
+      if (existingIdentity && String(existingIdentity.player_id) !== String(playerRow.id)) {
+        return { status: 409, body: { error: 'Callsign is already registered by another player' } };
+      }
+
+      updatedRow = await store.updatePlayerCallsign(
+        String(playerRow.id),
+        callsignResult.callsign,
+        nowUnix
+      );
+    }
+
+    if (body.avatarConfig !== undefined) {
+      const isCallerAdmin =
+        Boolean(playerRow.auth_provider) && isEmailInAdminList(playerRow.auth_email, rawAdminEmails);
+      if (body.avatarConfig === null) {
+        updatedRow = await store.updatePlayerAvatarConfig(String(playerRow.id), null, nowUnix);
+      } else if (typeof body.avatarConfig === 'object' && !Array.isArray(body.avatarConfig)) {
+        const avatarObj = /** @type {Record<string, unknown>} */ (body.avatarConfig);
+        if (avatarObj.useAdminScorpion === true && !isCallerAdmin) {
+          return {
+            status: 403,
+            body: { error: 'Admin Scorpion avatar is restricted to Admin accounts' },
+          };
+        }
+        const cleanedAvatar = parseAvatarConfig(body.avatarConfig, isCallerAdmin);
+        if (!cleanedAvatar) {
+          return { status: 400, body: { error: 'Invalid avatarConfig payload' } };
+        }
+        updatedRow = await store.updatePlayerAvatarConfig(
+          String(playerRow.id),
+          JSON.stringify(cleanedAvatar),
+          nowUnix
+        );
+      } else {
+        return { status: 400, body: { error: 'Invalid avatarConfig payload' } };
+      }
+    }
+
     if (!updatedRow) return { status: 404, body: { error: 'Player not found' } };
     return { status: 200, body: formatPlayerProfile(updatedRow, rawAdminEmails) };
   }

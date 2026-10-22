@@ -1,9 +1,10 @@
 // Client-side types, platform storage hydration, profile/leaderboard caches, and offline shift queue persistence.
 
 import { normalizeStartedAtUnix, verifyShiftReplay } from '../../server/shiftVerifier.js';
-import { buildSmokedByEnvironmentMap } from '../../server/storeQueries.js';
+import { buildSmokedByEnvironmentMap, parseAvatarConfig } from '../../server/storeQueries.js';
 import { getPlatform, type PlatformId } from '../platform';
 import { platformStorage } from '../platform/storage';
+import { saveAvatarTraits, type OperatorAvatarConfig } from './OperatorAvatar';
 import {
   type EnvironmentId,
   getUnlockedEnvironments,
@@ -39,6 +40,7 @@ export interface PlayerProfile {
   unlockedPhase: 1 | 2 | 3;
   isChairman: boolean;
   unlockedEnvironments: EnvironmentId[];
+  avatarConfig?: OperatorAvatarConfig | null;
   authProvider?: AuthProviderId;
   authEmail?: string;
   isAdmin?: boolean;
@@ -50,6 +52,7 @@ export interface LeaderboardEntry {
   smoked: number;
   environmentId: EnvironmentId;
   completedAt: number;
+  avatarConfig?: OperatorAvatarConfig | null;
 }
 
 export interface LeaderboardResponse {
@@ -198,6 +201,17 @@ function normalizePlatformId(value: unknown): PlatformId {
   return value === 'ios' || value === 'android' ? value : getPlatform();
 }
 
+function syncProfileAvatarToLocalCache(profile: PlayerProfile): void {
+  if (profile.avatarConfig === undefined) return;
+  saveAvatarTraits(
+    profile.callsign,
+    profile.avatarConfig,
+    profile.avatarConfig !== null
+      ? Boolean(profile.avatarConfig.useAdminScorpion)
+      : Boolean(profile.isAdmin)
+  );
+}
+
 export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
   const isAdmin = raw.isAdmin === true;
   const lifetimeSmoked = Number(raw.lifetimeSmoked ?? 0);
@@ -232,6 +246,11 @@ export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
       : undefined;
   const authEmail =
     typeof raw.authEmail === 'string' && raw.authEmail.length > 0 ? raw.authEmail : undefined;
+  const rawAvatar = raw.avatarConfig !== undefined ? raw.avatarConfig : raw.avatar_config;
+  const avatarConfig =
+    rawAvatar === undefined
+      ? undefined
+      : (parseAvatarConfig(rawAvatar, isAdmin) as OperatorAvatarConfig | null);
   return {
     playerId: String(raw.playerId ?? DEFAULT_PROFILE.playerId),
     callsign: String(raw.callsign ?? DEFAULT_PROFILE.callsign),
@@ -244,6 +263,7 @@ export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
     unlockedPhase,
     isChairman,
     unlockedEnvironments: unlockedRaw.length > 0 ? unlockedRaw : ['alleyway'],
+    ...(avatarConfig !== undefined ? { avatarConfig } : {}),
     ...(authProvider ? { authProvider } : {}),
     ...(authEmail ? { authEmail } : {}),
     ...(isAdmin ? { isAdmin: true } : {}),
@@ -253,6 +273,7 @@ export function normalizeProfile(raw: Record<string, unknown>): PlayerProfile {
 export function setCachedProfile(profile: PlayerProfile): void {
   memoryProfile = profile;
   platformStorage.setSync(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+  syncProfileAvatarToLocalCache(profile);
 }
 
 export function getCachedPlayerProfile(): PlayerProfile {
@@ -261,6 +282,7 @@ export function getCachedPlayerProfile(): PlayerProfile {
   if (raw) {
     try {
       memoryProfile = normalizeProfile(JSON.parse(raw) as Record<string, unknown>);
+      syncProfileAvatarToLocalCache(memoryProfile);
       return memoryProfile;
     } catch {
       // Ignore corrupt cached JSON
@@ -274,7 +296,18 @@ export function getCachedLeaderboard(): LeaderboardResponse {
 }
 
 export function setCachedLeaderboard(leaderboard: LeaderboardResponse): void {
-  memoryLeaderboard = leaderboard;
+  memoryLeaderboard = {
+    ...leaderboard,
+    entries: Array.isArray(leaderboard.entries)
+      ? leaderboard.entries.map(entry => ({
+          ...entry,
+          avatarConfig:
+            entry.avatarConfig !== undefined
+              ? (parseAvatarConfig(entry.avatarConfig) as OperatorAvatarConfig | null)
+              : null,
+        }))
+      : [],
+  };
 }
 
 export function getActiveFlushPromise(): Promise<FlushPendingSummary> | null {

@@ -649,7 +649,9 @@ describe('Player Authentication, OAuth, Account Deletion & Admin Taglines API', 
     const store = createSqliteStore(db);
     const origProcess = globalThis.process;
     try {
-      (globalThis as Record<string, unknown>).process = undefined;
+      (globalThis as Record<string, unknown>).process = {
+        nextTick: origProcess.nextTick.bind(origProcess),
+      };
 
       const regRes = await handleApiRequest(
         {

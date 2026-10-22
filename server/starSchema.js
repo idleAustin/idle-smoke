@@ -1,5 +1,5 @@
 // Star schema DDL, SQLite pragmas, 12-sector progression thresholds, seed data, and Promotion gauntlet evaluator.
-export const SCHEMA_VERSION = '3';
+export const SCHEMA_VERSION = '4';
 
 export const UNLOCK_THRESHOLDS = Object.freeze({
   alleyway: 0,
@@ -378,6 +378,7 @@ CREATE TABLE IF NOT EXISTS player_dim (
     best_smoked              INTEGER NOT NULL DEFAULT 0 CHECK (best_smoked >= 0),
     shifts_completed         INTEGER NOT NULL DEFAULT 0 CHECK (shifts_completed >= 0),
     promotion_rounds_cleared INTEGER NOT NULL DEFAULT 0 CHECK (promotion_rounds_cleared BETWEEN 0 AND 9),
+    avatar_config            TEXT,
     created_at               INTEGER NOT NULL,
     updated_at               INTEGER NOT NULL
 ) STRICT;

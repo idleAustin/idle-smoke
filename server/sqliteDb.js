@@ -28,6 +28,7 @@ import {
   formatSmokeSession,
   formatTaglineRow,
   normalizeInspectSummary,
+  parseAvatarConfig,
 } from './storeQueries.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,6 +84,12 @@ function migrateSqliteToV3(db) {
     db.exec(
       'ALTER TABLE player_dim ADD COLUMN promotion_rounds_cleared INTEGER NOT NULL DEFAULT 0 CHECK (promotion_rounds_cleared BETWEEN 0 AND 9);'
     );
+  }
+  if (
+    playerCols.length > 0 &&
+    !playerCols.some(col => String(col.name) === 'avatar_config')
+  ) {
+    db.exec('ALTER TABLE player_dim ADD COLUMN avatar_config TEXT;');
   }
 
   const envCols = db.prepare('PRAGMA table_info(environment_dim)').all();
@@ -242,6 +249,21 @@ export function createSqliteStore(db) {
     async updatePlayerCallsign(playerId, callsign, nowUnix) {
       db.prepare(API_SQL.updatePlayerCallsign).run(callsign, nowUnix, playerId);
       return hydratePlayerRow(db.prepare(API_SQL.selectPlayerById).get(playerId) ?? null);
+    },
+    /**
+     * @param {string} playerId
+     * @param {string | Record<string, unknown> | null} avatarConfigJson
+     * @param {number} nowUnix
+     */
+    async updatePlayerAvatarConfig(playerId, avatarConfigJson, nowUnix) {
+      const serialized =
+        typeof avatarConfigJson === 'string'
+          ? avatarConfigJson
+          : avatarConfigJson && typeof avatarConfigJson === 'object'
+            ? JSON.stringify(parseAvatarConfig(avatarConfigJson))
+            : null;
+      db.prepare(API_SQL.updatePlayerAvatarConfig).run(serialized, nowUnix, playerId);
+      return this.getPlayerById(playerId);
     },
     /**
      * @param {string} playerId

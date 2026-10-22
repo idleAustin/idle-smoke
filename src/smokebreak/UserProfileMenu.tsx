@@ -2,27 +2,24 @@
 
 import { useState, type FormEvent } from 'react';
 import { AdminTaglinesPanel } from './AdminTaglinesPanel';
+import { OperatorAvatar, type OperatorAvatarConfig } from './OperatorAvatar';
 import { type AuthProviderId, type PlayerProfile, type TaglineCollection } from './shiftStorage';
+import { UserProfilePrototype } from './UserProfilePrototype';
 
 const PROVIDER_DISPLAY: Record<AuthProviderId, { badge: string; label: string; defaultHint: string }> = {
-  apple: { badge: ' Apple ID', label: 'Signed in with Apple', defaultHint: 'Linked via Apple ID' },
-  google: { badge: 'G Google', label: 'Signed in with Google', defaultHint: 'Linked via Google Account' },
-  password: { badge: '🔑 Password', label: 'Callsign + Password', defaultHint: 'PBKDF2-SHA256 verified callsign' },
+  apple: { badge: 'Apple ID', label: 'Signed in with Apple', defaultHint: 'Linked via Apple ID' },
+  google: { badge: 'Google', label: 'Signed in with Google', defaultHint: 'Linked via Google Account' },
+  password: { badge: 'Password', label: 'Callsign + Password', defaultHint: 'PBKDF2-SHA256 verified callsign' },
   guest: { badge: 'Guest', label: 'Local Guest Session', defaultHint: 'Not linked to Apple or Google yet' },
 };
 
-function getInitials(callsign: string): string {
-  const clean = callsign.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  return clean.slice(0, 2) || 'SB';
-}
-
 /**
  * Far top-right circular user icon that opens Option C (Quick Profile Card Popover),
- * with a button to expand into Option B (Full 2-Tab Account Settings Modal).
+ * with a button to expand into Option B (Full Account Settings Modal).
  */
 export function UserCircleTrigger({
   profile, isQuickCardOpen, isSettingsModalOpen, busy,
-  showChangeModeAction, onToggleQuickCard, onOpenSettingsModal, onChangeMode, onSignOut,
+  showChangeModeAction, onToggleQuickCard, onOpenSettingsModal, onChangeMode, onOpenScoreboard, onSignOut,
 }: {
   profile: PlayerProfile;
   isQuickCardOpen: boolean;
@@ -32,6 +29,7 @@ export function UserCircleTrigger({
   onToggleQuickCard: () => void;
   onOpenSettingsModal: () => void;
   onChangeMode?: () => void;
+  onOpenScoreboard?: () => void;
   onSignOut: () => void;
 }) {
   const providerId: AuthProviderId = profile.authProvider ?? 'guest';
@@ -49,13 +47,11 @@ export function UserCircleTrigger({
         aria-label={`Open profile card for ${profile.callsign}`}
         title={`${profile.callsign} (${providerInfo.label})`}
       >
-        <svg
-          className="proto-user-circle-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-        >
-          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-          <circle cx="12" cy="7" r="4" />
-        </svg>
+        <OperatorAvatar
+          callsign={profile.callsign}
+          isAdmin={profile.isAdmin}
+          avatarConfig={profile.avatarConfig}
+        />
         <span className={`proto-user-circle-dot ${providerId === 'guest' ? 'guest' : 'linked'}`} />
       </button>
 
@@ -72,7 +68,13 @@ export function UserCircleTrigger({
 
           <div className="proto-discord-body">
             <div className="proto-discord-avatar-row">
-              <div className="proto-discord-avatar">{getInitials(profile.callsign)}</div>
+              <div className="proto-discord-avatar">
+                <OperatorAvatar
+                  callsign={profile.callsign}
+                  isAdmin={profile.isAdmin}
+                  avatarConfig={profile.avatarConfig}
+                />
+              </div>
               <button
                 type="button"
                 className="proto-acct-close-x"
@@ -102,6 +104,15 @@ export function UserCircleTrigger({
               >
                 Open Profile &amp; Account Settings →
               </button>
+              {onOpenScoreboard && (
+                <button
+                  type="button"
+                  className="proto-acct-btn-secondary full"
+                  onClick={() => { onToggleQuickCard(); onOpenScoreboard(); }}
+                >
+                  Global Scoreboard
+                </button>
+              )}
               {showChangeModeAction && onChangeMode && (
                 <button
                   type="button"
@@ -128,11 +139,11 @@ export function UserCircleTrigger({
 }
 
 /**
- * Option B: Full 2-Tab Account Settings Modal opened when clicking "Open Profile & Account Settings"
- * from the Option C Quick Profile Card.
+ * Full Account Settings Modal opened when clicking "Open Profile & Account Settings"
+ * from the Quick Profile Card or via `/?profile=1`.
  */
 export function AccountSettingsModal({
-  profile, busy, error, onClose, onSaveCallsign,
+  profile, busy, error, onClose, onSaveCallsign, onSaveAvatarConfig,
   onSignOut, onDeleteAccount, onTaglinesUpdated,
 }: {
   profile: PlayerProfile;
@@ -140,6 +151,7 @@ export function AccountSettingsModal({
   error?: string | null;
   onClose: () => void;
   onSaveCallsign?: (nextCallsign: string) => Promise<void>;
+  onSaveAvatarConfig?: (avatarConfig: OperatorAvatarConfig | null) => Promise<void> | void;
   onSignOut: () => void;
   onDeleteAccount: () => void;
   onTaglinesUpdated?: (collection: TaglineCollection) => void;
@@ -170,6 +182,71 @@ export function AccountSettingsModal({
     }
   };
 
+  const callsignHeader = (
+    <div className="proto-mobbin-user-meta">
+      <div className="proto-mobbin-name-row">
+        {!editingCallsign ? (
+          onSaveCallsign ? (
+            <button
+              type="button"
+              className="proto-mobbin-callsign-trigger"
+              title="Click to edit callsign"
+              aria-label={`Edit callsign ${profile.callsign}`}
+              onClick={() => {
+                setCallsignDraft(profile.callsign);
+                setCallsignError(null);
+                setEditingCallsign(true);
+              }}
+            >
+              <strong>{profile.callsign}</strong>
+              <span className="proto-mobbin-edit-hint" aria-hidden="true">EDIT</span>
+            </button>
+          ) : (
+            <strong>{profile.callsign}</strong>
+          )
+        ) : (
+          <form className="callsign-form" onSubmit={submitCallsign}>
+            <input
+              className="callsign-input"
+              type="text"
+              value={callsignDraft}
+              maxLength={16}
+              autoFocus
+              onChange={e => setCallsignDraft(e.target.value.toUpperCase())}
+              aria-label="Edit operator callsign"
+              disabled={callsignBusy}
+            />
+            <button type="submit" className="callsign-save-btn" disabled={callsignBusy}>
+              Save
+            </button>
+            <button
+              type="button"
+              className="callsign-cancel-btn"
+              disabled={callsignBusy}
+              onClick={() => {
+                setEditingCallsign(false);
+                setCallsignError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </form>
+        )}
+        <span className="proto-mobbin-provider-tag">{providerInfo.badge}</span>
+        {profile.isAdmin && (
+          <span
+            className="proto-mobbin-provider-tag"
+            style={{ borderColor: 'var(--as-accent-primary)', color: 'var(--as-accent-primary)' }}
+          >
+            ADMIN
+          </span>
+        )}
+      </div>
+      {callsignError && <span className="callsign-error">{callsignError}</span>}
+      <small>{subtitle}</small>
+    </div>
+  );
+
   return (
     <div
       className="proto-overlay proto-acct-modal-backdrop"
@@ -197,14 +274,22 @@ export function AccountSettingsModal({
               className={`proto-chatgpt-tab ${activeTab === 'profile' ? 'active' : ''}`}
               onClick={() => { setActiveTab('profile'); setConfirmStep(false); }}
             >
-              <span>👤</span> Profile &amp; Session
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              Profile &amp; Session
             </button>
             <button
               type="button"
               className={`proto-chatgpt-tab ${activeTab === 'danger' ? 'active' : ''}`}
               onClick={() => setActiveTab('danger')}
             >
-              <span>⚙️</span> Data &amp; Account
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+              Data &amp; Account
             </button>
             {profile.isAdmin && (
               <button
@@ -212,7 +297,10 @@ export function AccountSettingsModal({
                 className={`proto-chatgpt-tab ${activeTab === 'admin' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admin')}
               >
-                <span>🛠️</span> Admin · Taglines
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                Admin · Taglines
               </button>
             )}
           </nav>
@@ -225,99 +313,13 @@ export function AccountSettingsModal({
             )}
 
             {activeTab === 'profile' && (
-              <div className="proto-chatgpt-section">
-                <div className="proto-mobbin-menu-header">
-                  <div className="proto-mobbin-avatar-lg">{getInitials(profile.callsign)}</div>
-                  <div className="proto-mobbin-user-meta">
-                    <div className="proto-mobbin-name-row">
-                      {!editingCallsign ? (
-                        onSaveCallsign ? (
-                          <button
-                            type="button"
-                            className="proto-mobbin-callsign-trigger"
-                            title="Click to edit callsign"
-                            aria-label={`Edit callsign ${profile.callsign}`}
-                            onClick={() => {
-                              setCallsignDraft(profile.callsign);
-                              setCallsignError(null);
-                              setEditingCallsign(true);
-                            }}
-                          >
-                            <strong>{profile.callsign}</strong>
-                            <span className="proto-mobbin-edit-hint" aria-hidden="true">✎</span>
-                          </button>
-                        ) : (
-                          <strong>{profile.callsign}</strong>
-                        )
-                      ) : (
-                        <form className="callsign-form" onSubmit={submitCallsign}>
-                          <input
-                            className="callsign-input"
-                            type="text"
-                            value={callsignDraft}
-                            maxLength={16}
-                            autoFocus
-                            onChange={e => setCallsignDraft(e.target.value.toUpperCase())}
-                            aria-label="Edit operator callsign"
-                            disabled={callsignBusy}
-                          />
-                          <button type="submit" className="callsign-save-btn" disabled={callsignBusy}>
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            className="callsign-cancel-btn"
-                            disabled={callsignBusy}
-                            onClick={() => {
-                              setEditingCallsign(false);
-                              setCallsignError(null);
-                            }}
-                          >
-                            Cancel
-                          </button>
-                        </form>
-                      )}
-                      <span className="proto-mobbin-provider-tag">{providerInfo.badge}</span>
-                      {profile.isAdmin && (
-                        <span
-                          className="proto-mobbin-provider-tag"
-                          style={{ borderColor: 'var(--as-accent-primary)', color: 'var(--as-accent-primary)' }}
-                        >
-                          ADMIN
-                        </span>
-                      )}
-                    </div>
-                    {callsignError && <span className="callsign-error">{callsignError}</span>}
-                    <small>{subtitle}</small>
-                  </div>
-                </div>
-
-                <div className="proto-chatgpt-row">
-                  <div>
-                    <strong>Career Progress</strong>
-                    <small>
-                      {profile.lifetimeSmoked} lifetime butts · Best shift: {profile.bestSmoked}{' '}
-                      butts · {profile.shiftsCompleted} shifts
-                    </small>
-                  </div>
-                  <span className="proto-chip">{profile.unlockedEnvironments.length}/12 Spots</span>
-                </div>
-
-                <div className="proto-chatgpt-row">
-                  <div>
-                    <strong>Sign out of this device</strong>
-                    <small>Return to the login screen while keeping your cloud account safe.</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="proto-acct-btn-secondary"
-                    disabled={busy}
-                    onClick={onSignOut}
-                  >
-                    Sign out
-                  </button>
-                </div>
-              </div>
+              <UserProfilePrototype
+                profile={profile}
+                busy={busy}
+                callsignHeader={callsignHeader}
+                onSaveAvatarConfig={onSaveAvatarConfig}
+                onSignOut={onSignOut}
+              />
             )}
 
             {activeTab === 'danger' && (

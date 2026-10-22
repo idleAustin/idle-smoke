@@ -1,6 +1,7 @@
 // Account management, password/OAuth sign-in, session sign-out, account deletion, and taglines CMS client.
 
 import { getPlatform } from '../platform';
+import { type OperatorAvatarConfig } from './OperatorAvatar';
 import { bootstrapPlayerSession, ensureAuthenticatedPlayer } from './shiftClient';
 import {
   clearClientSessionStorage,
@@ -57,6 +58,38 @@ export async function updatePlayerCallsign(
   const updated = normalizeProfile({ ...currentProfile, ...data });
   setCachedProfile(updated);
   return updated;
+}
+
+export async function updatePlayerAvatarConfig(
+  avatarConfig: OperatorAvatarConfig | null,
+  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis)
+): Promise<PlayerProfile> {
+  const { token, profile: currentProfile, reachable } = await ensureAuthenticatedPlayer(fetchImpl);
+  if (token && reachable) {
+    try {
+      const res = await fetchImpl(resolveApiPath('/api/v1/players/me'), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ avatarConfig }),
+      });
+
+      const data = await parseJsonSafe(res);
+      if (res.ok) {
+        const updated = normalizeProfile({ ...currentProfile, ...data });
+        setCachedProfile(updated);
+        return updated;
+      }
+    } catch {
+      // Fall back to local cached profile update when offline
+    }
+  }
+
+  const localUpdated = normalizeProfile({ ...currentProfile, avatarConfig });
+  setCachedProfile(localUpdated);
+  return localUpdated;
 }
 
 export async function loginWithPassword(

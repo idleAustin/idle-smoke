@@ -23,6 +23,7 @@ import {
   formatSmokeSession,
   formatTaglineRow,
   normalizeInspectSummary,
+  parseAvatarConfig,
 } from './storeQueries.js';
 
 const D1_DDL_STATEMENTS = STAR_SCHEMA_DDL
@@ -46,6 +47,12 @@ export async function ensureD1Schema(d1, date = new Date()) {
         'ALTER TABLE player_dim ADD COLUMN promotion_rounds_cleared INTEGER NOT NULL DEFAULT 0 CHECK (promotion_rounds_cleared BETWEEN 0 AND 9)'
       )
       .run();
+  }
+  if (
+    playerCols.length > 0 &&
+    !playerCols.some(col => String(col.name) === 'avatar_config')
+  ) {
+    await d1.prepare('ALTER TABLE player_dim ADD COLUMN avatar_config TEXT').run();
   }
 
   const { results: envCols = [] } = await d1.prepare('PRAGMA table_info(environment_dim)').all();
@@ -187,6 +194,24 @@ export function createD1Store(d1) {
       return hydratePlayerRow(
         (await d1.prepare(API_SQL.selectPlayerById).bind(playerId).first()) ?? null
       );
+    },
+    /**
+     * @param {string} playerId
+     * @param {string | Record<string, unknown> | null} avatarConfigJson
+     * @param {number} nowUnix
+     */
+    async updatePlayerAvatarConfig(playerId, avatarConfigJson, nowUnix) {
+      const serialized =
+        typeof avatarConfigJson === 'string'
+          ? avatarConfigJson
+          : avatarConfigJson && typeof avatarConfigJson === 'object'
+            ? JSON.stringify(parseAvatarConfig(avatarConfigJson))
+            : null;
+      await d1
+        .prepare(API_SQL.updatePlayerAvatarConfig)
+        .bind(serialized, nowUnix, playerId)
+        .run();
+      return this.getPlayerById(playerId);
     },
     /**
      * @param {string} playerId

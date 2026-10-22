@@ -66,6 +66,30 @@ test('signs in, navigates pre-shift lobby and HUD back actions, completes a 15-s
   await sessionRegion.getByRole('button', { name: '← Game Modes' }).click();
   await expect(modeRegion).toBeVisible();
 
+  // Verify Global Scoreboard screen navigation, 3-tier stepped podium, and scope tabs
+  await modeRegion.getByRole('button', { name: 'Scoreboard & Rankings →' }).click();
+  const scoreboardRegion = page.getByRole('region', { name: 'Global Scoreboard' });
+  await expect(scoreboardRegion).toBeVisible();
+  await expect(scoreboardRegion.getByRole('heading', { name: 'Global Scoreboard & Podium' })).toBeVisible();
+  const scopeTabs = scoreboardRegion.getByRole('tablist', { name: 'Scoreboard scope filter' });
+  await expect(scopeTabs.getByRole('tab', { name: 'ALL SECTORS' })).toHaveAttribute('aria-selected', 'true');
+  await expect(scopeTabs.getByRole('tab', { name: 'PHASE 01' })).toBeVisible();
+  await expect(scopeTabs.getByRole('tab', { name: 'PHASE 02' })).toBeVisible();
+  await expect(scopeTabs.getByRole('tab', { name: 'PHASE 03' })).toBeVisible();
+  await expect(scopeTabs.getByRole('tab', { name: 'SMOKE SESSION' })).toBeVisible();
+  const podium = scoreboardRegion.getByLabel('Top 3 Podium');
+  await expect(podium).toBeVisible();
+  await expect(podium).toContainText('CHAMPION');
+  await expect(podium).toContainText('2ND PLACE');
+  await expect(podium).toContainText('3RD PLACE');
+  await scopeTabs.getByRole('tab', { name: 'SMOKE SESSION' }).click();
+  await expect(scoreboardRegion.getByRole('heading', { name: 'No Active Smoke Session Joined' })).toBeVisible();
+  await scopeTabs.getByRole('tab', { name: 'ALL SECTORS' }).click();
+  await expect(podium).toBeVisible();
+  await scoreboardRegion.getByRole('button', { name: '← Game Modes' }).click();
+  await expect(modeRegion).toBeVisible();
+  await expect(scoreboardRegion).toBeHidden();
+
   // Step 3: Navigate to Campaign Sector Map, back to Game Modes, then deploy to Alleyway.
   await modeRegion.getByRole('button', { name: /Open Sector Map/ }).click();
   const mapRegion = page.getByRole('region', { name: 'Campaign Sector Map' });

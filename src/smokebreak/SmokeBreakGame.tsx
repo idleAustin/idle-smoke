@@ -5,7 +5,8 @@ import { isNativeMobile, triggerDragHaptic } from '../platform';
 import { EnvironmentDeck, type EnvironmentId, getEnvironment } from './EnvironmentDeck';
 import {
   FALLBACK_TAGLINES, deletePlayerAccount, fetchActiveTaglines,
-  loginWithOAuth, loginWithPassword, signOutPlayerSession, updatePlayerCallsign,
+  loginWithOAuth, loginWithPassword, signOutPlayerSession,
+  updatePlayerAvatarConfig, updatePlayerCallsign,
 } from './accountClient';
 import {
   bootstrapPlayerSession, flushPendingShifts, startShiftSession, submitFinishedShift,
@@ -29,6 +30,7 @@ import {
 import { SmokeBreakScene } from './SmokeBreakScene';
 import { fetchSmokeSession, pickFresherSmokeSession, type SmokeSession } from './smokeSessionClient';
 import { AccountSettingsModal } from './UserProfileMenu';
+import { shouldOpenProfilePrototypeFromUrl } from './UserProfilePrototype';
 
 /** Smoke Break Simulator: mash space to smoke as many cigarettes as possible before the break ends. */
 export function SmokeBreakGame({
@@ -88,7 +90,9 @@ export function SmokeBreakGame({
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse>(() => getCachedLeaderboard());
   const [shiftResult, setShiftResult] = useState<ShiftFinishResult | null>(null);
   const [isQuickCardOpen, setIsQuickCardOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(() =>
+    shouldOpenProfilePrototypeFromUrl()
+  );
   const [accountBusy, setAccountBusy] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
@@ -185,7 +189,7 @@ export function SmokeBreakGame({
       isLobbyOpenRef.current ||
       event.button !== 0 ||
       (event.target as Element).closest(
-        'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay, .proto-avatar-anchor, .proto-discord-card, .proto-chatgpt-modal'
+        'button, input, form, .env-deck, .hud-command, .smoke-result, .proto-overlay, .proto-avatar-anchor, .proto-discord-card, .proto-chatgpt-modal, .proto-switcher'
       )
     ) return;
     if ((event.pointerType === 'touch' || isNativeMobile()) && !doneRef.current) {
@@ -412,7 +416,7 @@ export function SmokeBreakGame({
     leaderboard.entries.length > 0
       ? leaderboard.entries
       : done
-        ? [{ rank: 1, callsign: profile.callsign, smoked: reportSmoked, environmentId: verifiedEnv.id, completedAt: 0 }]
+        ? [{ rank: 1, callsign: profile.callsign, smoked: reportSmoked, environmentId: verifiedEnv.id, completedAt: 0, avatarConfig: profile.avatarConfig }]
         : [];
 
   const activeTagline = taglines[activeJokeIndex % Math.max(1, taglines.length)] ?? FALLBACK_TAGLINES[0];
@@ -432,6 +436,10 @@ export function SmokeBreakGame({
         onChangeMode={() => {
           updateActiveSmokeSession(null);
           setLobbyStep('modes');
+        }}
+        onOpenScoreboard={() => {
+          updateActiveSmokeSession(null);
+          setLobbyStep('scoreboard');
         }}
         onSignOut={() => void handleSignOut()}
       />
@@ -474,6 +482,7 @@ export function SmokeBreakGame({
             step={lobbyStep} profile={profile} currentEnv={env}
             unlockedEnvironments={reportUnlockedEnvironments}
             leaderboardEntries={leaderboard.entries}
+            leaderboard={leaderboard}
             activeSmokeSession={activeSmokeSession}
             onSmokeSessionChange={updateActiveSmokeSession}
             statusBanner={statusBanner} onDismissBanner={() => setStatusBanner(null)}
@@ -500,6 +509,9 @@ export function SmokeBreakGame({
             profile={profile} busy={accountBusy} error={accountError}
             onClose={() => setIsSettingsModalOpen(false)}
             onSaveCallsign={async next => { setProfile(await updatePlayerCallsign(next)); }}
+            onSaveAvatarConfig={async nextConfig => {
+              setProfile(await updatePlayerAvatarConfig(nextConfig));
+            }}
             onSignOut={() => void handleSignOut()}
             onDeleteAccount={() => void handleDeleteAccount()}
             onTaglinesUpdated={next => {
@@ -522,6 +534,11 @@ export function SmokeBreakGame({
             onOpenModes={() => {
               updateActiveSmokeSession(null);
               setLobbyStep('modes');
+              finish();
+            }}
+            onOpenScoreboard={() => {
+              updateActiveSmokeSession(null);
+              setLobbyStep('scoreboard');
               finish();
             }}
           />
