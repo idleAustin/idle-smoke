@@ -28,7 +28,7 @@ Only the latest release from `main`, deployed at `idlemullet.com/idle-smoke`, re
 
 These are accepted trade-offs today. They are listed so reports can focus on new issues.
 
-- **Score integrity is plausibility, not proof.** On `POST /api/v1/shifts/finish` the server replays the submitted drag offsets and rejects any that are malformed, out of order, outside 0 to 15,000 ms, or more than 360 drags. It does not prove the drags happened. A scripted client can submit a plausible score within those bounds, and the finish handler does not compare the offsets with server-side elapsed time.
+- **Score integrity is plausibility, not proof.** On `POST /api/v1/shifts/finish` the server replays the submitted drag offsets and rejects any that are malformed, out of order, or outside 0 to 15,000 ms. It does not prove the drags happened. A scripted client can submit a plausible score within those bounds, and the finish handler does not compare the offsets with server-side elapsed time.
 - **Rate limiting is per process.** The counter lives in memory, so each Node process and each Worker isolate counts separately. Treat it as best-effort, and add a Cloudflare rate-limiting rule if you need a hard limit.
 - **Password hashing uses 50,000 PBKDF2 iterations.** That is below current OWASP guidance for PBKDF2-SHA256. Cloudflare Workers reject counts above 100,000, so the most it can be raised to there is 100,000, with a rehash on next login.
 

@@ -118,6 +118,7 @@ it('scales in-shift Drag Ratio (12 -> 8 -> 4) across client press() and server v
   expect(getDragRatio(19)).toBe(8);
   expect(getDragRatio(20)).toBe(4);
   expect(getDragRatio(59)).toBe(4);
+  expect(getDragRatio(100)).toBe(4);
 
   const milestones: ReadonlyArray<{ drags: number; expectedButts: number }> = [
     { drags: 60, expectedButts: 5 },
@@ -127,6 +128,8 @@ it('scales in-shift Drag Ratio (12 -> 8 -> 4) across client press() and server v
     { drags: 220, expectedButts: 25 },
     { drags: 240, expectedButts: 30 },
     { drags: 360, expectedButts: 60 },
+    { drags: 364, expectedButts: 61 },
+    { drags: 520, expectedButts: 100 },
   ];
 
   for (const { drags, expectedButts } of milestones) {

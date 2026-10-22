@@ -330,7 +330,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
     }
   });
 
-  it('rejects all tamper vectors with 400 or 401 (spoofed smoked count, negative/>15000ms/non-monotonic offsets, >360 taps, invalid token, >16kb payload)', async () => {
+  it('rejects all tamper vectors with 400 or 401 (spoofed smoked count, negative/>15000ms/non-monotonic offsets, invalid token, >16kb payload) and accepts >360 taps', async () => {
     const db = openSqliteDb(':memory:');
     try {
       const store = createSqliteStore(db);
@@ -425,17 +425,22 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       );
       expect(nonMonotonic.status).toBe(400);
 
-      // 6. Macro overflow > 360 taps -> 400
-      const macroOverflow = await handleApiRequest(
+      // 6. High-volume shift > 360 taps (364 taps = 61 butts) -> 200 verified
+      const highVolumeShift = await handleApiRequest(
         {
           method: 'POST',
           pathname: '/api/v1/shifts/finish',
           authHeader: `Bearer ${token}`,
-          rawBody: JSON.stringify({ environmentId: 'alleyway', pressOffsetsMs: makeOffsets(361, 10) }),
+          rawBody: JSON.stringify({ environmentId: 'alleyway', pressOffsetsMs: makeOffsets(364, 10) }),
         },
         store
       );
-      expect(macroOverflow.status).toBe(400);
+      expect(highVolumeShift.status).toBe(200);
+      expect(highVolumeShift.body).toMatchObject({
+        verified: true,
+        smoked: 61,
+        tapCount: 364,
+      });
 
       // 7. Unknown shiftId -> 400
       const unknownShiftIdRes = await handleApiRequest(
@@ -474,7 +479,7 @@ describe('Cryptographic Player Identity & Deterministic Shift Replay API', () =>
       const rejectedCount = db
         .prepare(`SELECT COUNT(*) AS count FROM shift_fact WHERE status = 'rejected'`)
         .get() as { count: number };
-      expect(rejectedCount.count).toBe(4);
+      expect(rejectedCount.count).toBe(3);
     } finally {
       db.close();
     }

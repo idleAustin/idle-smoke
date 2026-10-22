@@ -6,7 +6,6 @@ export const BREAK_MS = 15_000;
 export const PRESSES_PER_CIGARETTE = 12;
 export const MAX_BODY_BYTES = 16 * 1024;
 
-const MAX_PRESS_COUNT = 360;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 120;
 const CALLSIGN_PATTERN = /^[A-Za-z0-9 _-]{2,16}$/;
@@ -227,9 +226,6 @@ export function normalizeStartedAtUnix(rawStartedAt, fallbackUnix = Math.floor(D
 export function verifyShiftReplay(pressOffsetsMs) {
   if (!Array.isArray(pressOffsetsMs)) {
     return { ok: false, error: 'pressOffsetsMs must be an array of millisecond tap offsets' };
-  }
-  if (pressOffsetsMs.length > MAX_PRESS_COUNT) {
-    return { ok: false, error: `pressOffsetsMs exceeds maximum human cadence ceiling (${MAX_PRESS_COUNT} taps)` };
   }
 
   let state = freshBreak();
