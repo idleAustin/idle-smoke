@@ -72,7 +72,7 @@ describe('shiftClient frontend progression & leaderboard client', () => {
     }
   });
 
-  it('starts a shift session, submits pressOffsetsMs with shiftId, unlocks restaurant at 5 butts, and rejects >360 macro taps', async () => {
+  it('starts a shift session, submits pressOffsetsMs with shiftId, unlocks restaurant at 5 butts, and verifies 61+ butts (>360 drags) without capping', async () => {
     resetShiftClientStateForTests();
     const db = openSqliteDb(':memory:', { now: new Date('2026-10-15T12:00:00Z') });
     const store = createSqliteStore(db);
@@ -111,23 +111,26 @@ describe('shiftClient frontend progression & leaderboard client', () => {
         environmentId: 'alleyway',
       });
 
-      // Macro >360 drags recorded by recordShiftDrag are rejected by server and do not increment progression
-      let macroSession = freshShiftSession();
-      for (let i = 0; i < 365; i++) {
-        macroSession = recordShiftDrag(macroSession, i * 10);
+      // High-volume >360 drags (364 drags = 61 cigarettes) recorded by recordShiftDrag are verified and increment progression accurately
+      let highVolumeSession = freshShiftSession();
+      for (let i = 0; i < 364; i++) {
+        highVolumeSession = recordShiftDrag(highVolumeSession, i * 10);
       }
-      expect(macroSession.pressOffsetsMs).toHaveLength(365);
+      expect(highVolumeSession.pressOffsetsMs).toHaveLength(364);
+      expect(highVolumeSession.state.smoked).toBe(61);
 
-      const rejectedRes = await submitFinishedShift(
+      const highVolumeRes = await submitFinishedShift(
         {
           environmentId: 'restaurant',
-          pressOffsetsMs: macroSession.pressOffsetsMs,
+          pressOffsetsMs: highVolumeSession.pressOffsetsMs,
         },
         fetchMock
       );
-      expect(rejectedRes.verified).toBe(false);
-      expect(rejectedRes.queued).toBe(false);
-      expect(rejectedRes.profile.lifetimeSmoked).toBe(5);
+      expect(highVolumeRes.verified).toBe(true);
+      expect(highVolumeRes.queued).toBe(false);
+      expect(highVolumeRes.smoked).toBe(61);
+      expect(highVolumeRes.profile.lifetimeSmoked).toBe(66);
+      expect(highVolumeRes.profile.bestSmoked).toBe(61);
       expect(getPendingShifts()).toEqual([]);
     } finally {
       db.close();
