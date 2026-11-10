@@ -71,12 +71,25 @@ function smokeBreakApiPlugin(): Plugin {
   };
 }
 
+const commit = buildCommit();
+
+/** Emits dist/version.json so idlemullet.com can read the live deployed game version. */
+function versionManifestPlugin(): Plugin {
+  const manifest = JSON.stringify({ version: `v${version.replace(/^v/, '')}`, commit });
+  return {
+    name: 'version-manifest',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: manifest });
+    },
+  };
+}
+
 export default defineConfig({
   base: isBrowserTest ? '/' : (process.env.BASE_URL ?? '/idle-smoke/'),
-  plugins: [react(), smokeBreakApiPlugin()],
+  plugins: [react(), smokeBreakApiPlugin(), versionManifestPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(version),
-    __APP_COMMIT__: JSON.stringify(buildCommit()),
+    __APP_COMMIT__: JSON.stringify(commit),
   },
   // Browser tests use a fixed build; local dev pins to 127.0.0.1:5176 to match Google OAuth redirect URI.
   server: isBrowserTest ? { watch: null } : { host: '127.0.0.1', port: 5176, strictPort: true },
